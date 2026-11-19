@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Admin — Discharge AI</title>
+  <meta name="theme-color" content="#0f4c4a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">Dx</span><span>Admin</span></div>
+    <div class="account"><span class="email" id="who"></span><a class="btn" href="./" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.4)">← App</a></div>
+  </header>
+
+  <main class="admin">
+    <div id="gate" class="gate" hidden></div>
+
+    <div id="panel" hidden>
+      <nav class="tabs" id="tabs">
+        <button data-tab="overview" class="on">Overview</button>
+        <button data-tab="users">Users</button>
+        <button data-tab="usage">Usage</button>
+        <button data-tab="settings">Settings</button>
+      </nav>
+
+      <!-- OVERVIEW -->
+      <section id="tab-overview">
+        <h3 class="kicker">Discharges &amp; AI cost</h3>
+        <div class="cards" id="costCards"></div>
+        <div class="breakdown" id="breakdown"></div>
+
+        <h3 class="kicker">Money this month</h3>
+        <div class="cards" id="moneyCards"></div>
+
+        <h3 class="kicker">Users</h3>
+        <div class="cards" id="userCards"></div>
+        <p class="hint" id="ovNote"></p>
+      </section>
+
+      <!-- USERS -->
+      <section id="tab-users" hidden>
+        <div class="search-row">
+          <input id="userSearch" type="search" placeholder="Search by email" />
+          <span class="hint" id="userCount"></span>
+        </div>
+        <div id="userList" class="user-list"></div>
+        <div class="actions"><button class="btn" id="moreUsers" hidden>Load more</button></div>
+      </section>
+
+      <!-- USAGE -->
+      <section id="tab-usage" hidden>
+        <div class="search-row">
+          <label class="inline">Show last
+            <select id="days"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select>
+          </label>
+        </div>
+        <div class="tbl-wrap"><table class="data" id="dailyTable"></table></div>
+        <h3 class="kicker">Recent errors</h3>
+        <div id="errors" class="err-list"></div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="tab-settings" hidden>
+        <p class="hint">Changes apply immediately. No redeploy needed.</p>
+        <div class="grid">
+          <label>Free: patients / month<input id="s_free_extract" type="number" min="0" inputmode="numeric" /></label>
+          <label>Pro: patients / month (fair use)<input id="s_pro_extract" type="number" min="0" inputmode="numeric" /></label>
+          <label>Free: drafts / month<input id="s_free_generate" type="number" min="0" inputmode="numeric" /></label>
+          <label>Pro: drafts / month<input id="s_pro_generate" type="number" min="0" inputmode="numeric" /></label>
+          <label class="span2">USD → INR rate (for showing costs in ₹)<input id="s_usd_inr" type="number" step="0.01" min="1" /></label>
+        </div>
+        <div class="actions"><button class="btn primary" id="saveSettings">Save settings</button></div>
+        <p class="hint">Gemini prices used for cost: set by the <code>PRICES_JSON</code> secret (default gemini-2.5-flash $0.30 in / $2.50 out per million tokens; thinking tokens count as output).</p>
+      </section>
+    </div>
+  </main>
+
+  <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Loading…</p></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

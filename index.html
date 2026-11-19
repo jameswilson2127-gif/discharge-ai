@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Discharge AI — discharge summaries from case-file photos</title>
+  <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review the extracted data and get a discharge summary in your department's format." />
+  <meta name="theme-color" content="#0f4c4a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand"><span class="logo">Dx</span><span id="appName">Discharge AI</span></div>
+    <div id="account" class="account"></div>
+  </header>
+
+  <!-- Signed-out landing -->
+  <main id="landing" class="landing no-print" hidden>
+    <h1>Discharge summaries from photos of the case file.</h1>
+    <p class="lede">Photograph the progress sheets, investigation reports and treatment chart. Check what was read, then get a draft in your department's format, ready to edit and print.</p>
+    <ol class="how">
+      <li><b>Snap</b> progress notes, labs and the drug chart. Black out names before upload.</li>
+      <li><b>Review</b> every extracted value next to the original photo. Unclear readings are flagged.</li>
+      <li><b>Print</b> a draft in the house format. Doses come straight from your verified table.</li>
+    </ol>
+    <button id="signInBtn" class="btn primary big">Continue with Google</button>
+    <p class="fine">Patient photos are sent to the AI only to read them and are never stored. Names and IDs you type stay on this device. The AI writes a draft; the treating doctor is responsible for the final summary.</p>
+  </main>
+
+  <!-- App -->
+  <main id="app" class="app" hidden>
+    <nav class="stepper no-print" id="stepper">
+      <button data-step="patient"><span>1</span>Patient</button>
+      <button data-step="photos"><span>2</span>Photos</button>
+      <button data-step="review"><span>3</span>Review</button>
+      <button data-step="final"><span>4</span>Summary</button>
+    </nav>
+
+    <!-- STEP 1 -->
+    <section id="step-patient" class="step no-print">
+      <div id="tplOnboard" class="onboard" hidden>
+        <b>Do you want summaries in your own format?</b>
+        <p>Paste a blank template or an old discharge summary (with names removed), or photograph a printed one. Every summary will then follow that format.</p>
+        <div class="actions tight">
+          <button class="btn" id="obDefault">Use the built-in format</button>
+          <button class="btn primary" id="obSetup">Set up my template</button>
+        </div>
+      </div>
+      <div class="tpl-pick">
+        <label>Summary template<select id="p_template"></select></label>
+        <button class="btn" id="manageTplBtn">Templates</button>
+      </div>
+      <h2>Patient details</h2>
+      <p class="hint">Name and ID numbers stay on this device and are never sent to the AI.</p>
+      <div class="grid">
+        <label class="span2">Name<input id="p_name" autocomplete="off" /></label>
+        <label>Age<input id="p_age" inputmode="numeric" /></label>
+        <label>Sex<select id="p_sex"><option value=""></option><option>Male</option><option>Female</option><option>Other</option></select></label>
+        <label>UHID<input id="p_uhid" autocomplete="off" /></label>
+        <label>IPD No.<input id="p_ipd" autocomplete="off" /></label>
+        <label>Date of admission<input id="p_doa" placeholder="DD/MM/YYYY" /></label>
+        <label>Date of discharge<input id="p_dod" placeholder="DD/MM/YYYY" /></label>
+        <label class="span2">Outcome
+          <select id="p_outcome">
+            <option value="discharged">Discharged</option>
+            <option value="lama">LAMA</option>
+            <option value="dama">DAMA</option>
+            <option value="referred">Referred</option>
+            <option value="expired">Expired</option>
+          </select>
+        </label>
+        <label>Follow-up after<input id="p_followup" placeholder="e.g. 7 days" /></label>
+        <label>Monitor at home<input id="p_monitor" placeholder="e.g. BP, blood sugar" /></label>
+        <label class="span2">Department (printed header)<input id="p_dept" /></label>
+        <label class="span2">Extra instructions for the AI (optional)<textarea id="p_extra" rows="2" placeholder="e.g. mention nephrology review on 25/09; keep it concise"></textarea></label>
+      </div>
+      <div id="extraFieldsWrap" hidden>
+        <p class="hint" style="margin-top:14px">More fields from your template (kept on this device):</p>
+        <div id="extraFields" class="grid"></div>
+      </div>
+      <div class="actions"><button class="btn primary" data-go="photos">Next: photos →</button></div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section id="step-photos" class="step no-print" hidden>
+      <h2>Case-file photos</h2>
+      <p class="hint">Flat, well-lit, one page per photo. Tag each photo and black out the name/UHID with <b>Mask</b>. Up to 20 photos.</p>
+      <div class="add-row">
+        <label class="btn primary">📷 Camera<input id="camInput" type="file" accept="image/*" capture="environment" hidden /></label>
+        <label class="btn">🖼 Gallery<input id="galInput" type="file" accept="image/*" multiple hidden /></label>
+        <label class="inline">Tag new photos as
+          <select id="defaultKind">
+            <option value="progress">Progress notes</option>
+            <option value="investigation">Investigations</option>
+            <option value="treatment">Treatment chart</option>
+            <option value="admission">Admission notes</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+      <div id="photoList" class="photo-list"></div>
+      <div class="actions">
+        <button class="btn" data-go="patient">← Back</button>
+        <button id="extractBtn" class="btn primary">Read photos with AI →</button>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section id="step-review" class="step no-print" hidden>
+      <h2>Review extracted data</h2>
+      <p class="hint">Compare with the photos (tap a thumbnail to zoom). Yellow = unclear reading. Fix anything wrong. Only what you keep here is used.</p>
+      <div id="thumbStrip" class="thumb-strip"></div>
+      <div id="reviewForm"></div>
+      <label class="confirm"><input type="checkbox" id="medConfirm" /> I have checked every drug, dose and frequency against the treatment chart.</label>
+      <div class="actions">
+        <button class="btn" data-go="photos">← Photos</button>
+        <button id="generateBtn" class="btn primary">Write discharge summary →</button>
+      </div>
+    </section>
+
+    <!-- STEP 4 -->
+    <section id="step-final" class="step" hidden>
+      <div class="no-print final-bar">
+        <div id="docWarn" class="doc-warn" hidden></div>
+        <label class="inline" id="optTreatmentLabel"><input type="checkbox" id="optTreatment" /> Include "Treatment given" list</label>
+        <div class="actions tight">
+          <button class="btn" data-go="review">← Review</button>
+          <button id="regenBtn" class="btn">↻ Rewrite</button>
+          <button id="copyBtn" class="btn">Copy text</button>
+          <button id="printBtn" class="btn primary">Print / Save PDF</button>
+          <button id="newBtn" class="btn danger">New patient</button>
+        </div>
+        <p class="hint">Tap anywhere in the summary to edit it. Highlighted <mark>___</mark> and <mark>[?]</mark> need your attention.</p>
+      </div>
+      <article id="doc" class="doc" contenteditable="true" spellcheck="true"></article>
+    </section>
+    <!-- TEMPLATES -->
+    <section id="step-templates" class="step no-print" hidden>
+      <div id="tplListView">
+        <h2>Summary templates</h2>
+        <p class="hint">Each template sets the headings, order and wording of your summaries. Pick one on the Patient step.</p>
+        <div id="tplList" class="tpl-list"></div>
+        <div class="actions">
+          <button class="btn" data-go="patient">← Back</button>
+          <button class="btn" id="tplFromDefault">Copy built-in &amp; edit</button>
+          <button class="btn primary" id="tplNew">＋ New from my format</button>
+        </div>
+      </div>
+
+      <div id="tplEditor" hidden>
+        <h2 id="tplEdTitle">New template</h2>
+        <label>Template name<input id="tplName" maxlength="80" placeholder="e.g. Medicine Unit 3 format" /></label>
+
+        <div id="tplSource">
+          <p class="hint" style="margin-top:12px">Paste a blank template or an old discharge summary (remove names and IDs first), or add photos of a printed one. The AI learns your headings, order and phrasing; any patient details are replaced with placeholders.</p>
+          <textarea id="tplText" rows="8" placeholder="Paste your template or an old summary here…"></textarea>
+          <div class="add-row" style="margin-top:10px">
+            <label class="btn">📷 Photo<input id="tplCam" type="file" accept="image/*" capture="environment" hidden /></label>
+            <label class="btn">🖼 Gallery<input id="tplGal" type="file" accept="image/*" multiple hidden /></label>
+            <span class="hint" style="margin:0">Up to 4 photos</span>
+          </div>
+          <div id="tplPhotos" class="photo-list"></div>
+          <div class="actions"><button class="btn primary" id="tplAnalyze">Read my format →</button></div>
+        </div>
+
+        <div id="tplStructure" hidden>
+          <div class="grid" style="margin-top:12px">
+            <label class="span2">Document title<input id="tplTitle" /></label>
+            <label class="span2">Department / header line<input id="tplDept" /></label>
+          </div>
+          <p class="hint" style="margin-top:12px">Check each section. Change its type if the AI got it wrong. Sections marked "from review" or "from step 1" are filled from your own verified data, never by the AI.</p>
+          <div id="tplSections"></div>
+          <button class="btn small" id="tplAddSec">+ Add section</button>
+          <label class="inline" style="margin-top:12px"><input type="checkbox" id="tplIsDefault" /> Use this template by default</label>
+        </div>
+
+        <div class="actions">
+          <button class="btn danger" id="tplDelete" hidden>Delete</button>
+          <button class="btn" id="tplCancel">Cancel</button>
+          <button class="btn" id="tplRedo" hidden>Re-read from text/photos</button>
+          <button class="btn primary" id="tplSave" hidden>Save template</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Overlays -->
+  <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Working…</p></div>
+
+  <div id="maskModal" class="modal no-print" hidden>
+    <div class="modal-bar">
+      <span>Drag to black out names / IDs</span>
+      <span class="spacer"></span>
+      <button id="maskUndo" class="btn">Undo</button>
+      <button id="maskCancel" class="btn">Cancel</button>
+      <button id="maskDone" class="btn primary">Done</button>
+    </div>
+    <div class="mask-wrap"><canvas id="maskCanvas"></canvas></div>
+  </div>
+
+  <div id="lightbox" class="modal no-print" hidden>
+    <div class="modal-bar"><span id="lbTitle"></span><span class="spacer"></span><button id="lbZoom" class="btn">Zoom</button><button id="lbClose" class="btn primary">Close</button></div>
+    <div class="lb-wrap"><img id="lbImg" alt="Case file photo" /></div>
+  </div>
+
+  <div id="planModal" class="sheet-bg no-print" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="planTitle">
+      <h2 id="planTitle">Upgrade to Pro</h2>
+      <ul class="feat" id="planFeatures"></ul>
+      <div class="plans" id="plans"></div>
+      <div class="actions tight"><button class="btn" id="planClose">Not now</button></div>
+      <p class="fine">Secure payment by Razorpay (UPI, cards, net banking). Renews automatically; cancel any time from the payment email.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast no-print" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
