@@ -1065,7 +1065,7 @@ function bind() {
   bindPatientForm();
 
   // Case photos
-  const addCase = async (files) => { if (await addFiles(files, state.photos, 20, $("#defaultKind").value)) renderPhotos(); };
+  const addCase = async (files) => { if (await addFiles(files, state.photos, 10, $("#defaultKind").value)) renderPhotos(); };
   $("#camInput").addEventListener("change", (e) => { addCase(e.target.files); e.target.value = ""; });
   $("#galInput").addEventListener("change", (e) => { addCase(e.target.files); e.target.value = ""; });
   $("#photoList").addEventListener("click", onPhotoAction);
