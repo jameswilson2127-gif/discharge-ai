@@ -44,6 +44,9 @@ const hl = (s) => esc(s).replace(/_{3,}|\[\?\]/g, (m) => `<mark>${m}</mark>`);
 const paras = (t) => String(t || "").split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)
   .map((x) => `<p>${hl(x).replace(/\n/g, "<br>")}</p>`).join("");
 const blank = (v) => (v && String(v).trim() ? esc(v) : "<mark>___</mark>");
+// Identifiers the app deliberately never collects (UHID, IPD, bed…) print as an
+// empty line to be written by hand on the signed copy. Not flagged as "missing".
+const writeIn = (v) => (v && String(v).trim() ? esc(v) : '<span class="writein"></span>');
 
 export const medLine = (m) => [m.form, m.drug, m.dose, m.route, m.frequency]
   .map((x) => String(x ?? "").trim()).filter(Boolean).join(" ").toUpperCase();
@@ -70,11 +73,13 @@ export function extraPatientFields(tpl) {
   return out;
 }
 
+/** Fields the app fills: name/dates (typed on this device, optional) and age/sex (from reviewed data).
+ *  Everything else (UHID, IPD No., bed, unit…) is never collected and stays a write-in blank. */
 export function patientValue(P, label) {
   const k = fieldKey(label);
   if (k === "agesex") return [P.age, P.sex].filter(Boolean).join(" / ");
-  if (k) return P[k] || "";
-  return (P.fields || {})[String(label).trim()] || "";
+  if (k === "name" || k === "doa" || k === "dod") return P[k] || "";
+  return "";
 }
 
 const TITLES = { expired: "DEATH SUMMARY", referred: "REFERRAL SUMMARY" };
@@ -96,7 +101,10 @@ export function buildDoc(P, data, draft, tpl = DEFAULT_TEMPLATE) {
     switch (s.kind) {
       case "patient_details": {
         const f = s.fields && s.fields.length ? s.fields : DEFAULT_TEMPLATE.sections[0].fields;
-        const cells = f.map((label) => `<td><b>${esc(label)}:</b> ${blank(patientValue(P, label))}</td>`);
+        const cells = f.map((label) => {
+          const v = patientValue(P, label);
+          return `<td><b>${esc(label)}:</b> ${fieldKey(label) === "agesex" ? blank(v) : writeIn(v)}</td>`;
+        });
         const rows = [];
         for (let r = 0; r < cells.length; r += 3) rows.push(`<tr>${cells.slice(r, r + 3).join("")}</tr>`);
         h += `<table class="pt">${rows.join("")}</table>`;

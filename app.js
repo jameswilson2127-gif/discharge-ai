@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 import { CONFIG } from "./config.js";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, extraPatientFields, normaliseTemplate, esc } from "./doc.js";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js";
 
 /* ============================================================
    Setup & helpers
@@ -20,6 +20,16 @@ const store = {
 const SS = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const LS = (() => { try { return window.localStorage; } catch { return null; } })();
 const CASE_KEY = "dai_case_v2";
+
+// Client-side first pass at removing identifier-like numbers (the server does this again).
+function scrubText(t) {
+  return String(t || "")
+    .replace(/\b\d{2}-\d{4}-\d{4}-\d{4}\b/g, "[ID removed]")
+    .replace(/\b\d{4}[ -]\d{4}[ -]\d{4}\b/g, "[ID removed]")
+    .replace(/(?:\+91[ -]?|\b0)?\b[6-9]\d{4}[ -]?\d{5}\b/g, "[phone removed]")
+    .replace(/\b\d{10,}\b/g, "[number removed]")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email removed]");
+}
 
 function toast(msg, err = false, ms = 3800) {
   const t = $("#toast");
@@ -46,14 +56,16 @@ function busy(text) {
 /* ============================================================
    State
    ============================================================ */
-const PATIENT_FIELDS = ["name", "age", "sex", "uhid", "ipd", "doa", "dod", "outcome", "followup", "monitor", "extra", "dept"];
+// Only these are collected. Name and dates are optional, stay on this device and are never sent to any server.
+const PATIENT_FIELDS = ["name", "doa", "dod", "outcome", "followup", "monitor", "extra", "dept"];
+const LEGACY_ID_FIELDS = ["age", "sex", "uhid", "ipd", "fields"]; // removed in v2 — wiped from old saved cases
 const KIND_LABEL = { progress: "Progress notes", investigation: "Investigations", treatment: "Treatment chart", admission: "Admission notes", other: "Other" };
 
 let session = null;
 let profile = null;
 const state = {
   step: "patient",
-  patient: { outcome: "discharged", dept: "", fields: {}, templateId: store.get(LS, "dai_last_tpl", "default") },
+  patient: { outcome: "discharged", dept: "", templateId: store.get(LS, "dai_last_tpl", "default") },
   photos: [],          // {id, kind, url} — memory only, never persisted
   data: null,          // extracted + reviewed case data
   draft: null,         // AI-written sections
@@ -65,6 +77,7 @@ const state = {
 const saveCase = debounce(() => {
   if (!SS) return;
   store.set(SS, CASE_KEY, {
+    savedAt: Date.now(),
     step: state.step === "templates" ? "patient" : state.step,
     patient: state.patient, data: state.data, draft: state.draft, draftTemplate: state.draftTemplate, docHtml: state.docHtml,
   });
@@ -73,8 +86,10 @@ const saveCase = debounce(() => {
 function restoreCase() {
   const c = SS && store.get(SS, CASE_KEY);
   if (!c) return;
+  const ttl = (CONFIG.CASE_TTL_MINUTES || 120) * 60e3;
+  if (!c.savedAt || Date.now() - c.savedAt > ttl) { store.del(SS, CASE_KEY); return; } // stale case: wipe
   Object.assign(state.patient, c.patient || {});
-  state.patient.fields = state.patient.fields || {};
+  for (const k of LEGACY_ID_FIELDS) delete state.patient[k];
   state.data = c.data || null;
   state.draft = c.draft || null;
   state.draftTemplate = c.draftTemplate || null;
@@ -98,13 +113,22 @@ async function loadProfile() {
   }
   const { data, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
   if (!error) profile = data;
+  profileLoaded = true;
   renderAccount();
+  renderGate();
+}
+
+function isAdmin() {
+  return (CONFIG.ADMIN_EMAILS || []).map((x) => x.toLowerCase()).includes((session?.user?.email || "").toLowerCase());
 }
 
 function renderAccount() {
   const el = $("#account");
-  if (!session) { el.innerHTML = ""; return; }
-  const email = esc(session.user.email || "");
+  if (!session) {
+    el.innerHTML = `<button class="btn primary small-top" data-signin>Sign in</button>`;
+    return;
+  }
+  const email = session.user.email || "";
   let plan;
   if (isPro()) {
     const kind = profile.plan === "yearly" ? "Pro yearly" : "Pro";
@@ -114,23 +138,118 @@ function renderAccount() {
     plan = `Free · ${Math.max(CONFIG.FREE_MONTHLY_LIMIT - used, 0)}/${CONFIG.FREE_MONTHLY_LIMIT} left`;
   }
   el.innerHTML = `
-    <span class="email">${email}</span>
-    <span class="plan">${esc(plan)}</span>
-    ${isPro() ? "" : `<button class="btn light" id="upgradeBtn">Upgrade</button>`}
-    ${(CONFIG.ADMIN_EMAILS || []).map((x) => x.toLowerCase()).includes((session.user.email || "").toLowerCase()) ? `<a class="btn" href="admin.html">Admin</a>` : ""}
-    <button class="btn" id="signOutBtn" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.4)">Sign out</button>`;
-  $("#upgradeBtn")?.addEventListener("click", upgrade);
-  $("#signOutBtn").addEventListener("click", async () => {
-    await sb.auth.signOut();
-    if (SS) store.del(SS, CASE_KEY);
-    location.reload();
-  });
+    <span class="plan-chip">${esc(plan)}</span>
+    ${isPro() ? "" : `<button class="btn primary small-top" data-menu="upgrade">Upgrade</button>`}
+    <div class="menu-wrap">
+      <button class="avatar" id="menuBtn" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">${esc((email[0] || "?").toUpperCase())}</button>
+      <div class="menu" id="menu" hidden>
+        <div class="menu-head">${esc(email)}<small>${esc(plan)}</small></div>
+        ${isAdmin() ? `<a href="admin.html">Admin panel</a>` : ""}
+        <button data-menu="export">Download my data</button>
+        <a href="terms.html">Terms of Use</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="mailto:${esc(CONFIG.CONTACT_EMAIL || "")}">Contact / grievance</a>
+        <button data-menu="signout">Sign out</button>
+        <button data-menu="delete" class="danger">Delete account</button>
+      </div>
+    </div>`;
 }
 
+async function signOut() {
+  await sb.auth.signOut();
+  try { SS?.clear(); } catch { /* ignore */ }
+  location.reload();
+}
+
+async function exportMyData() {
+  busy("Preparing your data");
+  try {
+    const [{ data: prof }, { data: tpls }, { data: acc }] = await Promise.all([
+      sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
+      sb.from("templates").select("name,data,is_default,created_at,updated_at").order("created_at"),
+      sb.from("terms_acceptances").select("version,attestation,accepted_at").order("accepted_at"),
+    ]);
+    const out = { exported_at: new Date().toISOString(), account: { email: session.user.email, ...prof }, templates: tpls || [], terms_acceptances: acc || [],
+      note: "This is everything Discharge AI stores about you. No patient data is stored." };
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: "application/json" }));
+    a.download = "discharge-ai-my-data.json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch {
+    toast("Could not export. Please try again.", true);
+  } finally {
+    busy(false);
+  }
+}
+
+async function deleteAccount() {
+  if (!confirm("Delete your account permanently? Your templates and settings will be erased and any Pro subscription cancelled without refund of the current period. This cannot be undone.")) return;
+  const typed = prompt('Type DELETE to confirm.');
+  if (typed !== "DELETE") return toast("Account not deleted.");
+  busy("Deleting account");
+  try {
+    await api("account", { action: "delete", confirm: "DELETE" });
+    try { SS?.clear(); LS?.clear(); } catch { /* ignore */ }
+    await sb.auth.signOut().catch(() => {});
+    alert("Your account has been deleted.");
+    location.reload();
+  } catch (e) {
+    handleApiError(e);
+  } finally {
+    busy(false);
+  }
+}
+
+function onAccountClick(e) {
+  if (e.target.closest("#menuBtn")) {
+    const m = $("#menu"); m.hidden = !m.hidden;
+    $("#menuBtn").setAttribute("aria-expanded", String(!m.hidden));
+    return;
+  }
+  const act = e.target.closest("[data-menu]")?.dataset.menu;
+  if (!act) return;
+  const m = $("#menu"); if (m) m.hidden = true;
+  if (act === "upgrade") upgrade();
+  if (act === "export") exportMyData();
+  if (act === "signout") signOut();
+  if (act === "delete") deleteAccount();
+}
+
+/* ---------- Terms gate ---------- */
+const termsOk = () => Number(profile?.terms_version || 0) >= Number(CONFIG.TERMS_VERSION || 1);
+
+function renderGate() {
+  const signedIn = !!session;
+  const needTerms = signedIn && profile !== undefined && profileLoaded && !termsOk();
+  $("#landing").hidden = signedIn;
+  $("#termsGate").hidden = !needTerms;
+  $("#app").hidden = !signedIn || needTerms || !profileLoaded;
+}
+
+async function acceptTerms() {
+  const attest = Object.fromEntries($$("[data-attest]").map((c) => [c.dataset.attest, c.checked]));
+  if (!Object.values(attest).every(Boolean)) return;
+  busy("Saving");
+  try {
+    const { error } = await sb.rpc("accept_terms", {
+      p_version: Number(CONFIG.TERMS_VERSION || 1),
+      p_attest: { ...attest, terms_updated: CONFIG.TERMS_UPDATED, ua: navigator.userAgent.slice(0, 200) },
+    });
+    if (error) throw error;
+    await loadProfile();
+    toast("Thank you. You're all set.");
+  } catch (e) {
+    toast(e.message || "Could not save. Please try again.", true);
+  } finally {
+    busy(false);
+  }
+}
+
+let profileLoaded = false;
 function renderAuth() {
-  $("#landing").hidden = !!session;
-  $("#app").hidden = !session;
   renderAccount();
+  renderGate();
   if (session) { loadProfile(); loadTemplates(); }
 }
 
@@ -164,7 +283,11 @@ async function api(fn, body) {
 }
 
 function handleApiError(e) {
-  if (e.status === 402) {
+  if (e.status === 428) {
+    toast(e.message, true, 6000);
+    if (profile) profile.terms_version = 0;
+    renderGate();
+  } else if (e.status === 402) {
     toast(e.message, true, 6000);
     if (!isPro()) setTimeout(upgrade, 600);
   } else {
@@ -244,7 +367,6 @@ async function loadTemplates() {
     setTemplate("default", { quiet: true });
   }
   renderTemplatePicker();
-  renderExtraFields();
   $("#tplOnboard").hidden = !(state.templates.length === 0 && !store.get(LS, "dai_tpl_onboarded"));
   if (state.step === "templates") renderTemplateList();
 }
@@ -267,7 +389,6 @@ function setTemplate(id, { quiet = false } = {}) {
     toast("Template changed. Write the summary again to use it.");
   }
   renderTemplatePicker();
-  renderExtraFields();
   saveCase();
 }
 
@@ -277,13 +398,6 @@ function renderTemplatePicker() {
     state.templates.map((t) => `<option value="${t.id}">${esc(t.name)}${t.is_default ? " ★" : ""}</option>`).join("") +
     `<option value="__manage">＋ New / manage templates…</option>`;
   sel.value = state.templates.some((t) => t.id === state.patient.templateId) ? state.patient.templateId : "default";
-}
-
-function renderExtraFields() {
-  const labels = extraPatientFields(currentTemplate());
-  $("#extraFieldsWrap").hidden = !labels.length;
-  $("#extraFields").innerHTML = labels.map((l) =>
-    `<label>${esc(l)}<input data-field="${esc(l)}" value="${esc(state.patient.fields?.[l] || "")}" autocomplete="off" /></label>`).join("");
 }
 
 /* ============================================================
@@ -308,6 +422,7 @@ function renderTemplateList() {
 
 function openEditor({ id = null, tpl = null, name = "" } = {}) {
   ed.id = id; ed.photos = []; ed.tpl = tpl ? clone(tpl) : null;
+  $("#tplClean").checked = false;
   $("#tplEdTitle").textContent = id ? "Edit template" : "New template";
   $("#tplName").value = name;
   $("#tplText").value = "";
@@ -331,9 +446,10 @@ function showEditorStage(stage) {
 
 function renderTplPhotos() {
   $("#tplPhotos").innerHTML = ed.photos.map((p, i) => `
-    <div class="photo" data-id="${p.id}">
+    <div class="photo ${idDone(p) ? "" : "needs-id"}" data-id="${p.id}">
       <img src="${p.url}" alt="Template photo ${i + 1}" />
-      <div class="row"><button class="btn small" data-tact="mask">${p.masked ? "Masked ✓" : "Mask"}</button><button class="btn small danger" data-tact="del">✕</button></div>
+      <div class="row"><button class="btn small danger" data-tact="del">✕ Remove</button></div>
+      ${idRow(p, "tact")}
     </div>`).join("");
 }
 
@@ -386,11 +502,15 @@ function onTplSectionClick(e) {
 async function analyseTemplate() {
   const text = $("#tplText").value.trim();
   if (!text && !ed.photos.length) return toast("Paste your template or add a photo first.", true);
-  const unmasked = ed.photos.filter((p) => !p.masked).length;
-  if (unmasked && !confirm(`${unmasked} photo(s) are not masked. If they show a patient's name or ID, mask it first. Continue?`)) return;
+  const pending = ed.photos.filter((p) => !idDone(p)).length;
+  if (pending) return toast(`${pending} photo(s) still need "Mask IDs" or "No IDs".`, true, 6000);
+  if (!$("#tplClean").checked) {
+    $("#tplClean").closest("label").scrollIntoView({ behavior: "smooth", block: "center" });
+    return toast("Please confirm you have removed patient identifiers.", true);
+  }
   busy("Reading your format");
   try {
-    const r = await api("template", { text, images: ed.photos.map((p) => ({ mime: "image/jpeg", data: p.url.split(",")[1] })) });
+    const r = await api("template", { text: scrubText(text), images: ed.photos.map((p) => ({ mime: "image/jpeg", data: p.url.split(",")[1] })) });
     ed.tpl = normaliseTemplate(r.template);
     if (!$("#tplName").value.trim()) $("#tplName").value = (ed.tpl.department || "My format").slice(0, 80);
     showEditorStage("structure");
@@ -470,21 +590,12 @@ function fillPatientForm() {
   }
   if (!state.patient.dept) { state.patient.dept = currentTemplate().department || CONFIG.DEFAULT_DEPARTMENT; $("#p_dept").value = state.patient.dept; }
   renderTemplatePicker();
-  renderExtraFields();
 }
 function bindPatientForm() {
   for (const f of PATIENT_FIELDS) {
     const el = $(`#p_${f}`);
     el?.addEventListener("input", () => { state.patient[f] = el.value; state.docHtml = null; saveCase(); });
   }
-  $("#extraFields").addEventListener("input", (e) => {
-    const k = e.target.dataset.field;
-    if (!k) return;
-    state.patient.fields = state.patient.fields || {};
-    state.patient.fields[k] = e.target.value;
-    state.docHtml = null;
-    saveCase();
-  });
   $("#p_template").addEventListener("change", (e) => {
     if (e.target.value === "__manage") { renderTemplatePicker(); return showStep("templates"); }
     setTemplate(e.target.value);
@@ -537,6 +648,13 @@ async function addFiles(files, target, limit, kind) {
   return true;
 }
 
+// Every photo must be masked, or explicitly confirmed as showing no identifiers, before it is sent.
+const idDone = (p) => p.masked || p.clean;
+const idRow = (p, attr) => `<div class="row id-row">
+  <button class="btn small ${p.masked ? "on" : ""}" data-${attr}="mask">${p.masked ? "Masked ✓" : "Mask IDs"}</button>
+  <button class="btn small ${p.clean ? "on" : ""}" data-${attr}="clean" ${p.masked ? "disabled" : ""}>${p.clean ? "No IDs ✓" : "No IDs"}</button>
+</div>`;
+
 function renderPhotos() {
   const box = $("#photoList");
   if (!state.photos.length) {
@@ -544,7 +662,7 @@ function renderPhotos() {
     return;
   }
   box.innerHTML = state.photos.map((p, i) => `
-    <div class="photo" data-id="${p.id}">
+    <div class="photo ${idDone(p) ? "" : "needs-id"}" data-id="${p.id}">
       <img src="${p.url}" alt="Photo ${i + 1}" data-act="view" />
       <div class="row">
         <select data-act="kind">${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${k === p.kind ? "selected" : ""}>${i + 1}. ${l}</option>`).join("")}</select>
@@ -552,9 +670,9 @@ function renderPhotos() {
       <div class="row">
         <button class="btn small" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move earlier">◀</button>
         <button class="btn small" data-act="down" ${i === state.photos.length - 1 ? "disabled" : ""} aria-label="Move later">▶</button>
-        <button class="btn small" data-act="mask">${p.masked ? "Masked ✓" : "Mask"}</button>
         <button class="btn small danger" data-act="del" aria-label="Remove">✕</button>
       </div>
+      ${idRow(p, "act")}
     </div>`).join("");
 }
 
@@ -568,6 +686,7 @@ function onPhotoAction(e) {
   if (e.type !== "click") return;
   if (act === "view") openLightbox(p, `Photo ${i + 1} · ${KIND_LABEL[p.kind]}`);
   if (act === "mask") openMask(p, renderPhotos);
+  if (act === "clean") { p.clean = !p.clean; renderPhotos(); }
   if (act === "del") { state.photos.splice(i, 1); renderPhotos(); }
   if (act === "up" && i > 0) { [state.photos[i - 1], state.photos[i]] = [state.photos[i], state.photos[i - 1]]; renderPhotos(); }
   if (act === "down" && i < state.photos.length - 1) { [state.photos[i + 1], state.photos[i]] = [state.photos[i], state.photos[i + 1]]; renderPhotos(); }
@@ -630,6 +749,7 @@ function bindMask() {
       drawMask(false);
       mask.photo.url = c.toDataURL("image/jpeg", 0.85);
       mask.photo.masked = true;
+      mask.photo.clean = false;
       mask.onDone?.();
     }
     $("#maskModal").hidden = true;
@@ -659,8 +779,12 @@ function normalise(d) {
 async function extract() {
   if (!state.photos.length) return toast("Add at least one photo first.", true);
   if (state.data && !confirm("Reading the photos again will replace the data you reviewed. Continue?")) return;
-  const unmasked = state.photos.filter((p) => !p.masked).length;
-  if (unmasked && !confirm(`${unmasked} photo(s) are not masked. Names and IDs on them will be sent to the AI for reading (not stored). Continue?`)) return;
+  const pending = state.photos.filter((p) => !idDone(p)).length;
+  if (pending) {
+    renderPhotos();
+    $(".photo.needs-id")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return toast(`${pending} photo(s) still need "Mask IDs" or "No IDs" before reading.`, true, 6000);
+  }
   busy(`Reading ${state.photos.length} photo(s), usually 20–60 seconds`);
   try {
     const r = await api("extract", {
@@ -669,8 +793,7 @@ async function extract() {
     state.data = normalise(r.data);
     state.draft = null; state.draftTemplate = null; state.docHtml = null;
     const P = state.patient;
-    if (!P.age && state.data.age) P.age = state.data.age;
-    if (!P.sex && /^(male|female)$/i.test(state.data.sex || "")) P.sex = state.data.sex[0].toUpperCase() + state.data.sex.slice(1).toLowerCase();
+    if (/^(male|female)$/i.test(state.data.sex || "")) state.data.sex = state.data.sex[0].toUpperCase() + state.data.sex.slice(1).toLowerCase();
     if (!P.doa && state.data.admission_date) P.doa = state.data.admission_date;
     if (!P.dod && state.data.discharge_date) P.dod = state.data.discharge_date;
     fillPatientForm();
@@ -688,6 +811,9 @@ async function extract() {
    Step 3 — review
    ============================================================ */
 const SECTIONS = [
+  { title: "Patient (from photos)", fields: [
+    { k: "age", label: "Age" }, { k: "sex", label: "Sex" },
+  ] },
   { title: "Diagnosis", fields: [
     { k: "diagnoses", label: "Diagnoses (one per line, most important first)", type: "lines" },
     { k: "known_case_of", label: "Known case of / habits (one per line)", type: "lines" },
@@ -817,7 +943,8 @@ async function generate() {
   if (state.docHtml && !confirm("Rewriting will replace your edits in the summary. Continue?")) return;
   const P = state.patient;
   const { unclear_items, ...rest } = d;
-  const caseData = { ...rest, age: P.age || d.age || "", sex: P.sex || d.sex || "", admission_date: P.doa || d.admission_date || "", discharge_date: P.dod || d.discharge_date || "" };
+  // Only the reviewed clinical data goes to the AI. Name and the dates typed on step 1 never leave this device.
+  const caseData = { ...rest, age: d.age || "", sex: d.sex || "", admission_date: d.admission_date || "", discharge_date: d.discharge_date || "" };
   const tpl = currentTemplate();
   const template = { title: tpl.title, department: tpl.department, sections: tpl.sections };
   busy(`Writing the summary (${tpl.name})`);
@@ -831,6 +958,7 @@ async function generate() {
     state.draftTemplate = template;
     state.docHtml = null;
     $("#optTreatment").checked = (P.outcome || "discharged") !== "discharged";
+    setVerified(false);
     showStep("final");
   } catch (e) {
     handleApiError(e);
@@ -858,7 +986,7 @@ function renderDocIfNeeded(force = false) {
   if (!state.draft) return;
   doc.innerHTML = !force && state.docHtml
     ? state.docHtml
-    : buildDoc(state.patient, state.data, state.draft, state.draftTemplate || currentTemplate());
+    : buildDoc({ ...state.patient, age: state.data?.age || "", sex: state.data?.sex || "" }, state.data, state.draft, state.draftTemplate || currentTemplate());
   updateDocWarn();
 }
 
@@ -868,13 +996,50 @@ const onDocEdit = debounce(() => {
   saveCase();
 }, 500);
 
-function newPatient() {
-  if (!confirm("Clear this patient and start a new one?")) return;
+function setVerified(v) {
+  $("#finalVerify").checked = v;
+  $("#printBtn").disabled = !v;
+  $("#copyBtn").disabled = !v;
+}
+
+function clearCase() {
   const { dept, templateId } = state.patient;
-  Object.assign(state, { patient: { outcome: "discharged", dept, templateId, fields: {} }, photos: [], data: null, draft: null, draftTemplate: null, docHtml: null });
+  Object.assign(state, { patient: { outcome: "discharged", dept, templateId }, photos: [], data: null, draft: null, draftTemplate: null, docHtml: null });
   if (SS) store.del(SS, CASE_KEY);
   fillPatientForm(); renderPhotos(); $("#doc").innerHTML = "";
+  setVerified(false);
+}
+
+function newPatient() {
+  if (!confirm("Clear this patient from this device and start a new one?")) return;
+  clearCase();
   showStep("patient");
+}
+
+/* ============================================================
+   Landing
+   ============================================================ */
+function renderLanding() {
+  const free = CONFIG.FREE_MONTHLY_LIMIT;
+  $("#freeLine").textContent = `Free for ${free} patients a month`;
+  $("#yr").textContent = new Date().getFullYear();
+  $("#contactLink").href = `mailto:${CONFIG.CONTACT_EMAIL || ""}`;
+  const plans = CONFIG.PLANS || [];
+  const freeCard = `<div class="price-card">
+      <h3>Free</h3><div class="price">₹0</div><p class="pnote">To try it out</p>
+      <ul><li>${free} patients a month</li><li>Built-in General Medicine format</li><li>All privacy safeguards</li></ul>
+      <button class="btn big" data-signin>Start free</button></div>`;
+  const pro = plans.map((p) => `<div class="price-card ${p.best ? "best" : ""}">
+      ${p.best ? '<span class="tag">Best value</span>' : ""}
+      <h3>Pro ${esc(p.name.toLowerCase())}</h3><div class="price">${esc(p.price)} <small>${esc(p.per || "")}</small></div><p class="pnote">${esc(p.note || "")}</p>
+      <ul>${(CONFIG.PRO_FEATURES || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+      <button class="btn big ${p.best ? "primary" : ""}" data-signin>Get started</button></div>`).join("");
+  $("#priceGrid").innerHTML = freeCard + pro;
+}
+
+async function loadPublicLimits() {
+  const { data: lim } = await sb.rpc("public_limits");
+  if (lim?.free_extract >= 0) { CONFIG.FREE_MONTHLY_LIMIT = lim.free_extract; renderLanding(); renderAccount(); }
 }
 
 /* ============================================================
@@ -882,7 +1047,18 @@ function newPatient() {
    ============================================================ */
 function bind() {
   $("#appName").textContent = CONFIG.APP_NAME;
-  $("#signInBtn").addEventListener("click", signIn);
+  document.addEventListener("click", (e) => { if (e.target.closest("[data-signin]")) signIn(); });
+  $("#account").addEventListener("click", onAccountClick);
+  document.addEventListener("click", (e) => {
+    const m = $("#menu");
+    if (m && !m.hidden && !e.target.closest(".menu-wrap")) m.hidden = true;
+  });
+  $("#termsGate").addEventListener("change", () => {
+    $("#termsAccept").disabled = !$$("[data-attest]").every((c) => c.checked);
+  });
+  $("#termsAccept").addEventListener("click", acceptTerms);
+  $("#termsDecline").addEventListener("click", signOut);
+  renderLanding();
   $("#stepper").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !b.disabled) showStep(b.dataset.step); });
   document.addEventListener("click", (e) => { const g = e.target.closest("[data-go]"); if (g) showStep(g.dataset.go); });
 
@@ -914,15 +1090,23 @@ function bind() {
   $("#doc").addEventListener("input", onDocEdit);
   $("#optTreatment").addEventListener("change", () => { updateDocWarn(); onDocEdit(); });
   $("#regenBtn").addEventListener("click", generate);
+  $("#finalVerify").addEventListener("change", (e) => setVerified(e.target.checked));
   $("#copyBtn").addEventListener("click", async () => {
+    if (!$("#finalVerify").checked) return;
     try { await navigator.clipboard.writeText($("#doc").innerText); toast("Copied."); }
     catch { toast("Copy failed. Select the text and copy manually.", true); }
   });
   $("#printBtn").addEventListener("click", () => {
+    if (!$("#finalVerify").checked) return;
+    const left = ($("#doc").innerText.match(/_{3,}|\[\?\]/g) || []).length;
+    if (left && !confirm(`${left} blank(s) or unclear item(s) are still in the summary. Print anyway?`)) return;
     const old = document.title;
     document.title = `Discharge summary ${state.patient.dod || ""}`.trim();
     window.print();
-    setTimeout(() => (document.title = old), 500);
+    setTimeout(() => {
+      document.title = old;
+      if (confirm("Done printing? Clear this patient from this device now?")) { clearCase(); showStep("patient"); }
+    }, 800);
   });
   $("#newBtn").addEventListener("click", newPatient);
 
@@ -963,6 +1147,7 @@ function bind() {
     const i = ed.photos.findIndex((p) => p.id === card.dataset.id);
     if (act === "del") { ed.photos.splice(i, 1); renderTplPhotos(); }
     if (act === "mask") openMask(ed.photos[i], renderTplPhotos);
+    if (act === "clean") { ed.photos[i].clean = !ed.photos[i].clean; renderTplPhotos(); }
   });
 
   window.addEventListener("beforeunload", (e) => {
@@ -983,6 +1168,7 @@ async function init() {
   const { data } = await sb.auth.getSession();
   session = data.session;
   renderAuth();
+  if (!session) loadPublicLimits().catch(() => {});
   showStep(state.step);
 }
 

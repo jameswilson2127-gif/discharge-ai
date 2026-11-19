@@ -65,6 +65,36 @@ async function logUsage(row: Record<string, unknown>) {
   } catch (e) { console.error("logUsage", e); }
 }
 
+// Parse without ever putting AI text into an error message (V8's JSON errors quote the input,
+// which could carry patient details into logs).
+function safeParse(text: string) {
+  try { return JSON.parse(text); } catch { throw new Error("AI returned malformed JSON"); }
+}
+
+// Defence in depth: strip identifier-like numbers even if they slip past the photo mask / prompt.
+const ID_PATTERNS: [RegExp, string][] = [
+  [/\b\d{2}-\d{4}-\d{4}-\d{4}\b/g, "[ID removed]"],                 // ABHA number
+  [/\b\d{4}[ -]\d{4}[ -]\d{4}\b/g, "[ID removed]"],                  // Aadhaar (spaced)
+  [/(?:\+91[ -]?|\b0)?\b[6-9]\d{4}[ -]?\d{5}\b/g, "[phone removed]"],  // Indian mobile
+  [/\b\d{10,}\b/g, "[number removed]"],                                // any long ID-like run
+  [/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email removed]"],
+];
+export function scrub(v: unknown): unknown {
+  if (typeof v === "string") return ID_PATTERNS.reduce((s, [re, r]) => s.replace(re, r), v);
+  if (Array.isArray(v)) return v.map(scrub);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x)]));
+  return v;
+}
+
+// Server-side check that the user has accepted the current Terms of Use.
+async function termsAccepted(uid: string) {
+  const need = Number(env("TERMS_VERSION", "1"));
+  const r = await fetch(`${env("SUPABASE_URL")}/rest/v1/profiles?id=eq.${uid}&select=terms_version`, { headers: serviceHeaders() });
+  if (!r.ok) return false;
+  const rows = await r.json();
+  return Number(rows?.[0]?.terms_version ?? 0) >= need;
+}
+
 async function callGemini(opts: {
   system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number;
 }) {
@@ -93,7 +123,7 @@ async function callGemini(opts: {
         .filter((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
         .map((p: { text: string }) => p.text).join("");
       if (!text) throw Object.assign(new Error(`Empty AI response (${cand?.finishReason ?? "no candidate"})`), { model, usage: data.usageMetadata });
-      return { data: JSON.parse(text), usage: data.usageMetadata ?? null, model };
+      return { data: safeParse(text), usage: data.usageMetadata ?? null, model };
     }
     last = `${r.status} ${await r.text()}`;
     if (r.status !== 429 && r.status < 500) break;
@@ -158,9 +188,10 @@ ABSOLUTE RULES
 2. Where the template needs a value that is not in the data, write ___ (three underscores). Never guess vitals.
 3. Copy drug names, doses and lab values exactly as given. Do not change units.
 4. Items marked [?] are unverified: keep the [?] marker if you use them.
-5. Never write the patient's name or any ID number. Use "the patient".
+5. Never write the patient's name, any relative's name, address, phone or any ID number. Use "the patient".
 6. Do not write the sections that the app fills itself (listed under APP-FILLED), and do not reproduce those lists inside your prose.
-7. final_diagnosis: primary diagnosis first, then complications, then comorbidities/habits, using the doctor's own diagnosis wording (tidy capitalisation only), unless the template's diagnosis guidance says otherwise.`;
+7. You are a documentation aid, not a clinician: do not add any diagnosis, drug, dose, investigation, referral or treatment recommendation that is not in the case data or the doctor's instructions. Warning symptoms in advice sections must be generic return-to-hospital signs appropriate to the documented illness.
+8. final_diagnosis: primary diagnosis first, then complications, then comorbidities/habits, using the doctor's own diagnosis wording (tidy capitalisation only), unless the template's diagnosis guidance says otherwise.`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -168,12 +199,13 @@ Deno.serve(async (req: Request) => {
 
   const user = await getUser(req);
   if (!user) return json({ error: "Please sign in again." }, 401);
+  if (!(await termsAccepted(user.id))) return json({ error: "Please accept the Terms of Use to continue.", code: "terms" }, 428);
 
   let payload: { case?: Record<string, unknown>; options?: Record<string, string>; template?: unknown };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
   const c = payload.case;
   if (!c || typeof c !== "object") return json({ error: "No case data." }, 400);
-  const caseText = JSON.stringify(c);
+  const caseText = JSON.stringify(scrub(c));
   if (caseText.length > 120_000) return json({ error: "Case data too long." }, 400);
   const tpl = cleanTemplate(payload.template);
   if (!tpl) return json({ error: "Invalid template." }, 400);
@@ -207,7 +239,7 @@ Deno.serve(async (req: Request) => {
     `OUTCOME: ${OUTCOMES[o.outcome] ?? OUTCOMES.discharged}`,
     o.followup ? `FOLLOW-UP INTERVAL: ${String(o.followup).slice(0, 60)}` : "FOLLOW-UP INTERVAL: not specified (use ___)",
     o.monitor ? `PARAMETERS TO MONITOR: ${String(o.monitor).slice(0, 200)}` : "",
-    o.extra ? `ADDITIONAL INSTRUCTIONS FROM THE DOCTOR: ${String(o.extra).slice(0, 600)}` : "",
+    o.extra ? `ADDITIONAL INSTRUCTIONS FROM THE DOCTOR: ${scrub(String(o.extra).slice(0, 600))}` : "",
     "",
     "SECTIONS TO WRITE (return each under its JSON key):",
     ...write,
@@ -233,10 +265,10 @@ Deno.serve(async (req: Request) => {
     });
     await logUsage({ user_id: user.id, kind: "generate", ok: true, model, ...costOf(usage, model) });
     const sections: Record<string, string> = {};
-    for (const k of Object.keys(properties)) if (k !== "final_diagnosis") sections[k] = String(data?.[k] ?? "");
+    for (const k of Object.keys(properties)) if (k !== "final_diagnosis") sections[k] = scrub(String(data?.[k] ?? "")) as string;
     return json({
-      data: { final_diagnosis: Array.isArray(data?.final_diagnosis) ? data.final_diagnosis.map(String) : [], sections },
-      usage, quota: q,
+      data: { final_diagnosis: Array.isArray(data?.final_diagnosis) ? data.final_diagnosis.map((x: unknown) => scrub(String(x)) as string) : [], sections },
+      quota: q,
     });
   } catch (e) {
     await logUsage({ user_id: user.id, kind: "generate", ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });

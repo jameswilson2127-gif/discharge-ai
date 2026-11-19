@@ -17,6 +17,20 @@ export const CONFIG = {
   ],
   PRO_FEATURES: ["Up to 300 patients a month", "Unlimited custom templates", "Priority support"],
 
+  // ---- Legal (shown in the Terms of Use and Privacy Policy) ----
+  // Your full legal name, or your company's name if you register one.
+  OPERATOR_NAME: "",
+  // Public support + grievance contact. DPDP requires a working contact for grievances.
+  CONTACT_EMAIL: "jameswilson2127@gmail.com",
+  // City whose courts handle disputes, e.g. "New Delhi". Leave empty for "courts in India".
+  JURISDICTION_CITY: "",
+  // Bump this (and the TERMS_VERSION secret on Supabase) whenever you change the Terms/Privacy text;
+  // every user must then accept again before they can use the AI.
+  TERMS_VERSION: 1,
+  TERMS_UPDATED: "19 November 2026",
+  // How long an unfinished case may stay in this browser tab before it is wiped automatically.
+  CASE_TTL_MINUTES: 120,
+
   // Shows an "Admin" link for these accounts. Display only — access is checked
   // on the server against the ADMIN_EMAILS secret.
   ADMIN_EMAILS: ["jameswilson2127@gmail.com"],

@@ -70,6 +70,36 @@ async function logUsage(row: Record<string, unknown>) {
   } catch (e) { console.error("logUsage", e); }
 }
 
+// Parse without ever putting AI text into an error message (V8's JSON errors quote the input,
+// which could carry patient details into logs).
+function safeParse(text: string) {
+  try { return JSON.parse(text); } catch { throw new Error("AI returned malformed JSON"); }
+}
+
+// Defence in depth: strip identifier-like numbers even if they slip past the photo mask / prompt.
+const ID_PATTERNS: [RegExp, string][] = [
+  [/\b\d{2}-\d{4}-\d{4}-\d{4}\b/g, "[ID removed]"],                 // ABHA number
+  [/\b\d{4}[ -]\d{4}[ -]\d{4}\b/g, "[ID removed]"],                  // Aadhaar (spaced)
+  [/(?:\+91[ -]?|\b0)?\b[6-9]\d{4}[ -]?\d{5}\b/g, "[phone removed]"],  // Indian mobile
+  [/\b\d{10,}\b/g, "[number removed]"],                                // any long ID-like run
+  [/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email removed]"],
+];
+export function scrub(v: unknown): unknown {
+  if (typeof v === "string") return ID_PATTERNS.reduce((s, [re, r]) => s.replace(re, r), v);
+  if (Array.isArray(v)) return v.map(scrub);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x)]));
+  return v;
+}
+
+// Server-side check that the user has accepted the current Terms of Use.
+async function termsAccepted(uid: string) {
+  const need = Number(env("TERMS_VERSION", "1"));
+  const r = await fetch(`${env("SUPABASE_URL")}/rest/v1/profiles?id=eq.${uid}&select=terms_version`, { headers: serviceHeaders() });
+  if (!r.ok) return false;
+  const rows = await r.json();
+  return Number(rows?.[0]?.terms_version ?? 0) >= need;
+}
+
 async function callGemini(opts: {
   system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number;
 }) {
@@ -98,7 +128,7 @@ async function callGemini(opts: {
         .filter((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
         .map((p: { text: string }) => p.text).join("");
       if (!text) throw Object.assign(new Error(`Empty AI response (${cand?.finishReason ?? "no candidate"})`), { model, usage: data.usageMetadata });
-      return { data: JSON.parse(text), usage: data.usageMetadata ?? null, model };
+      return { data: safeParse(text), usage: data.usageMetadata ?? null, model };
     }
     last = `${r.status} ${await r.text()}`;
     if (r.status !== 429 && r.status < 500) break;
@@ -162,6 +192,7 @@ Deno.serve(async (req: Request) => {
 
   const user = await getUser(req);
   if (!user) return json({ error: "Please sign in again." }, 401);
+  if (!(await termsAccepted(user.id))) return json({ error: "Please accept the Terms of Use to continue.", code: "terms" }, 428);
 
   let payload: { text?: string; images?: { mime: string; data: string }[] };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
@@ -186,7 +217,7 @@ Deno.serve(async (req: Request) => {
   if (!q?.allowed) return json({ error: "Monthly limit reached.", quota: q }, 402);
 
   const parts: unknown[] = [];
-  if (text) parts.push({ text: `TEMPLATE / SAMPLE TEXT:\n"""\n${text}\n"""` });
+  if (text) parts.push({ text: `TEMPLATE / SAMPLE TEXT:\n"""\n${scrub(text)}\n"""` });
   images.forEach((im, i) => {
     parts.push({ text: `Template photo ${i + 1}:` });
     parts.push({ inlineData: { mimeType: im.mime, data: im.data } });
@@ -203,7 +234,7 @@ Deno.serve(async (req: Request) => {
     const sections = (Array.isArray(data.sections) ? data.sections : []).slice(0, 25).map((s: any) => ({
       heading: String(s.heading ?? "").slice(0, 120),
       kind: KINDS.includes(s.kind) ? s.kind : "narrative",
-      guidance: String(s.guidance ?? "").slice(0, 5000),
+      guidance: scrub(String(s.guidance ?? "").slice(0, 5000)) as string,
       fields: Array.isArray(s.fields) ? s.fields.map((f: unknown) => String(f).slice(0, 60)).slice(0, 20) : [],
     }));
     if (!sections.length) throw new Error("no sections");

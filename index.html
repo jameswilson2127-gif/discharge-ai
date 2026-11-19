@@ -4,65 +4,150 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Discharge AI — discharge summaries from case-file photos</title>
-  <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review the extracted data and get a discharge summary in your department's format." />
-  <meta name="theme-color" content="#0f4c4a" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:wght@400;600;700&display=swap" rel="stylesheet" />
+  <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
+  <meta name="theme-color" content="#ffffff" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar no-print">
-    <div class="brand"><span class="logo">Dx</span><span id="appName">Discharge AI</span></div>
+    <a class="brand" href="./"><span class="logo">Dx</span><span id="appName">Discharge AI</span></a>
     <div id="account" class="account"></div>
   </header>
 
-  <!-- Signed-out landing -->
+  <!-- ============ Signed-out landing ============ -->
   <main id="landing" class="landing no-print" hidden>
-    <h1>Discharge summaries from photos of the case file.</h1>
-    <p class="lede">Photograph the progress sheets, investigation reports and treatment chart. Check what was read, then get a draft in your department's format, ready to edit and print.</p>
-    <ol class="how">
-      <li><b>Snap</b> progress notes, labs and the drug chart. Black out names before upload.</li>
-      <li><b>Review</b> every extracted value next to the original photo. Unclear readings are flagged.</li>
-      <li><b>Print</b> a draft in the house format. Doses come straight from your verified table.</li>
-    </ol>
-    <button id="signInBtn" class="btn primary big">Continue with Google</button>
-    <p class="fine">Patient photos are sent to the AI only to read them and are never stored. Names and IDs you type stay on this device. The AI writes a draft; the treating doctor is responsible for the final summary.</p>
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">For resident doctors</span>
+        <h1>Discharge summaries in minutes, not hours.</h1>
+        <p class="lede">Photograph the progress notes, reports and drug chart. Check what the AI read. Print a draft in your department's own format, ready for you to verify and sign.</p>
+        <div class="cta-row">
+          <button class="btn primary big" data-signin>
+            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#fff" d="M44.5 20H24v8.5h11.8C34.7 33.9 30.1 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z"/></svg>
+            Continue with Google
+          </button>
+          <a href="#pricing" class="btn ghost big">See pricing</a>
+        </div>
+        <p class="micro"><span id="freeLine">Free for 5 patients a month</span> · No card needed</p>
+      </div>
+
+      <div class="hero-art" aria-hidden="true">
+        <div class="paper">
+          <div class="p-title">DISCHARGE SUMMARY</div>
+          <div class="p-sub">Department of General Medicine</div>
+          <div class="p-h">Final Diagnosis</div>
+          <div class="ln w80"></div><div class="ln w60"></div>
+          <div class="p-h">Clinical Summary</div>
+          <div class="ln"></div><div class="ln"></div><div class="ln w90"></div><div class="ln w70"></div>
+          <div class="p-h">Discharge Medications</div>
+          <div class="ln w60"></div><div class="ln w50"></div>
+        </div>
+        <div class="chip c1"><span class="dot ok"></span>Read 12 pages</div>
+        <div class="chip c2"><span class="dot warn"></span>2 readings to check</div>
+      </div>
+    </section>
+
+    <section class="how">
+      <h2 class="sec-title">How it works</h2>
+      <div class="how-grid">
+        <div class="how-card">
+          <span class="how-n">1</span>
+          <h3>Snap</h3>
+          <p>Photograph progress notes, labs and the treatment chart. Black out the name and IDs with one swipe before anything is sent.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-n">2</span>
+          <h3>Review</h3>
+          <p>Every extracted value sits next to the original photo. Unclear readings are highlighted for you to fix.</p>
+        </div>
+        <div class="how-card">
+          <span class="how-n">3</span>
+          <h3>Verify &amp; print</h3>
+          <p>Get a draft in your house format. Doses come only from the table you checked. You read it, edit it and sign it.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="trust">
+      <div class="trust-head">
+        <h2 class="sec-title">Built so patient data doesn't stick around</h2>
+        <p>The app is designed to hold as little patient information as possible, and nothing for longer than it needs to.</p>
+      </div>
+      <ul class="trust-grid">
+        <li><b>Photos are never stored.</b> They are read once by the AI and discarded. No copy is kept on our servers.</li>
+        <li><b>No IDs are collected.</b> We never ask for UHID, IPD number, phone or address. Those lines print blank for you to fill by hand.</li>
+        <li><b>The name stays on your device.</b> If you type it, it is used only for printing and is never sent anywhere.</li>
+        <li><b>You stay in charge.</b> The AI writes a draft. Nothing prints until you confirm you have checked it.</li>
+      </ul>
+      <p class="trust-more"><a href="privacy.html">Read the full privacy policy →</a></p>
+    </section>
+
+    <section id="pricing" class="pricing">
+      <h2 class="sec-title">Simple pricing</h2>
+      <div class="price-grid" id="priceGrid"></div>
+    </section>
+
+    <footer class="site-footer">
+      <span>© <span id="yr"></span> Discharge AI</span>
+      <nav><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a><a id="contactLink" href="#">Contact</a></nav>
+      <p class="foot-note">Discharge AI is a documentation aid for registered medical practitioners. It does not diagnose or recommend treatment. The treating doctor is responsible for every summary.</p>
+    </footer>
   </main>
 
-  <!-- App -->
+  <!-- ============ Terms gate (first sign-in and after each Terms update) ============ -->
+  <main id="termsGate" class="gate-page no-print" hidden>
+    <div class="gate-card">
+      <h1>Before you start</h1>
+      <p class="hint">Please read the <a href="terms.html" target="_blank">Terms of Use</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>, then confirm each statement.</p>
+      <label class="check"><input type="checkbox" data-attest="age" /> I am 18 or older.</label>
+      <label class="check"><input type="checkbox" data-attest="rmp" /> I am a registered medical practitioner, or I work under the supervision of one.</label>
+      <label class="check"><input type="checkbox" data-attest="authorised" /> I have my hospital's or institution's permission to photograph and process its patient records with this tool, and I will follow its records policy.</label>
+      <label class="check"><input type="checkbox" data-attest="mask" /> I will black out names, ID numbers and other identifiers before sending any photo.</label>
+      <label class="check"><input type="checkbox" data-attest="verify" /> I understand the AI can make mistakes. I will check every summary against the case file and remain responsible for what I sign.</label>
+      <label class="check"><input type="checkbox" data-attest="terms" /> I agree to the Terms of Use and Privacy Policy.</label>
+      <div class="actions">
+        <button class="btn" id="termsDecline">Sign out</button>
+        <button class="btn primary" id="termsAccept" disabled>Agree and continue</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ App ============ -->
   <main id="app" class="app" hidden>
     <nav class="stepper no-print" id="stepper">
-      <button data-step="patient"><span>1</span>Patient</button>
-      <button data-step="photos"><span>2</span>Photos</button>
-      <button data-step="review"><span>3</span>Review</button>
-      <button data-step="final"><span>4</span>Summary</button>
+      <button data-step="patient"><span>1</span><em>Start</em></button>
+      <button data-step="photos"><span>2</span><em>Photos</em></button>
+      <button data-step="review"><span>3</span><em>Review</em></button>
+      <button data-step="final"><span>4</span><em>Summary</em></button>
     </nav>
 
     <!-- STEP 1 -->
     <section id="step-patient" class="step no-print">
       <div id="tplOnboard" class="onboard" hidden>
-        <b>Do you want summaries in your own format?</b>
-        <p>Paste a blank template or an old discharge summary (with names removed), or photograph a printed one. Every summary will then follow that format.</p>
+        <b>Want summaries in your own format?</b>
+        <p>Paste a blank template, or an old discharge summary with names removed, or photograph a printed one. Every summary will then follow that format.</p>
         <div class="actions tight">
           <button class="btn" id="obDefault">Use the built-in format</button>
           <button class="btn primary" id="obSetup">Set up my template</button>
         </div>
       </div>
+
       <div class="tpl-pick">
         <label>Summary template<select id="p_template"></select></label>
-        <button class="btn" id="manageTplBtn">Templates</button>
+        <button class="btn" id="manageTplBtn">Manage</button>
       </div>
-      <h2>Patient details</h2>
-      <p class="hint">Name and ID numbers stay on this device and are never sent to the AI.</p>
+
+      <h2>New discharge</h2>
+      <p class="hint">Everything is optional. What you type here stays on this device and is never sent to the AI. Age and sex are read from the photos.</p>
       <div class="grid">
-        <label class="span2">Name<input id="p_name" autocomplete="off" /></label>
-        <label>Age<input id="p_age" inputmode="numeric" /></label>
-        <label>Sex<select id="p_sex"><option value=""></option><option>Male</option><option>Female</option><option>Other</option></select></label>
-        <label>UHID<input id="p_uhid" autocomplete="off" /></label>
-        <label>IPD No.<input id="p_ipd" autocomplete="off" /></label>
-        <label>Date of admission<input id="p_doa" placeholder="DD/MM/YYYY" /></label>
-        <label>Date of discharge<input id="p_dod" placeholder="DD/MM/YYYY" /></label>
+        <label class="span2"><span>Patient name <small>optional, printed only</small></span><input id="p_name" autocomplete="off" /></label>
+        <label><span>Date of admission <small>optional</small></span><input id="p_doa" placeholder="DD/MM/YYYY" autocomplete="off" /></label>
+        <label><span>Date of discharge <small>optional</small></span><input id="p_dod" placeholder="DD/MM/YYYY" autocomplete="off" /></label>
+      </div>
+      <p class="note-line">UHID, IPD number and other identifiers are not collected. They print as blank lines for you to fill by hand.</p>
+
+      <h3 class="sub">Discharge details</h3>
+      <div class="grid">
         <label class="span2">Outcome
           <select id="p_outcome">
             <option value="discharged">Discharged</option>
@@ -75,11 +160,7 @@
         <label>Follow-up after<input id="p_followup" placeholder="e.g. 7 days" /></label>
         <label>Monitor at home<input id="p_monitor" placeholder="e.g. BP, blood sugar" /></label>
         <label class="span2">Department (printed header)<input id="p_dept" /></label>
-        <label class="span2">Extra instructions for the AI (optional)<textarea id="p_extra" rows="2" placeholder="e.g. mention nephrology review on 25/09; keep it concise"></textarea></label>
-      </div>
-      <div id="extraFieldsWrap" hidden>
-        <p class="hint" style="margin-top:14px">More fields from your template (kept on this device):</p>
-        <div id="extraFields" class="grid"></div>
+        <label class="span2"><span>Extra instructions for the AI <small>no names or IDs</small></span><textarea id="p_extra" rows="2" placeholder="e.g. mention nephrology review on 25/09; keep it concise"></textarea></label>
       </div>
       <div class="actions"><button class="btn primary" data-go="photos">Next: photos →</button></div>
     </section>
@@ -87,7 +168,7 @@
     <!-- STEP 2 -->
     <section id="step-photos" class="step no-print" hidden>
       <h2>Case-file photos</h2>
-      <p class="hint">Flat, well-lit, one page per photo. Tag each photo and black out the name/UHID with <b>Mask</b>. Up to 20 photos.</p>
+      <p class="hint">Flat, well lit, one page per photo, up to 20. Before reading, each photo must be either <b>masked</b> (names and IDs blacked out) or marked <b>No IDs</b>.</p>
       <div class="add-row">
         <label class="btn primary">📷 Camera<input id="camInput" type="file" accept="image/*" capture="environment" hidden /></label>
         <label class="btn">🖼 Gallery<input id="galInput" type="file" accept="image/*" multiple hidden /></label>
@@ -111,7 +192,7 @@
     <!-- STEP 3 -->
     <section id="step-review" class="step no-print" hidden>
       <h2>Review extracted data</h2>
-      <p class="hint">Compare with the photos (tap a thumbnail to zoom). Yellow = unclear reading. Fix anything wrong. Only what you keep here is used.</p>
+      <p class="hint">Compare with the photos (tap a thumbnail to zoom). Yellow means an unclear reading. Only what you keep here is used.</p>
       <div id="thumbStrip" class="thumb-strip"></div>
       <div id="reviewForm"></div>
       <label class="confirm"><input type="checkbox" id="medConfirm" /> I have checked every drug, dose and frequency against the treatment chart.</label>
@@ -125,23 +206,25 @@
     <section id="step-final" class="step" hidden>
       <div class="no-print final-bar">
         <div id="docWarn" class="doc-warn" hidden></div>
-        <label class="inline" id="optTreatmentLabel"><input type="checkbox" id="optTreatment" /> Include "Treatment given" list</label>
+        <p class="hint">Tap anywhere in the summary to edit it. Highlighted <mark>___</mark> and <mark>[?]</mark> need your attention.</p>
+        <label class="inline" id="optTreatmentLabel"><input type="checkbox" id="optTreatment" /> Include the "Treatment given" list</label>
+        <label class="confirm verify"><input type="checkbox" id="finalVerify" /> I have read this draft in full against the case file, corrected it, and take responsibility for it as the treating doctor.</label>
         <div class="actions tight">
           <button class="btn" data-go="review">← Review</button>
           <button id="regenBtn" class="btn">↻ Rewrite</button>
-          <button id="copyBtn" class="btn">Copy text</button>
-          <button id="printBtn" class="btn primary">Print / Save PDF</button>
+          <button id="copyBtn" class="btn" disabled>Copy text</button>
+          <button id="printBtn" class="btn primary" disabled>Print / Save PDF</button>
           <button id="newBtn" class="btn danger">New patient</button>
         </div>
-        <p class="hint">Tap anywhere in the summary to edit it. Highlighted <mark>___</mark> and <mark>[?]</mark> need your attention.</p>
       </div>
       <article id="doc" class="doc" contenteditable="true" spellcheck="true"></article>
     </section>
+
     <!-- TEMPLATES -->
     <section id="step-templates" class="step no-print" hidden>
       <div id="tplListView">
         <h2>Summary templates</h2>
-        <p class="hint">Each template sets the headings, order and wording of your summaries. Pick one on the Patient step.</p>
+        <p class="hint">Each template sets the headings, order and wording of your summaries. Pick one on the Start step.</p>
         <div id="tplList" class="tpl-list"></div>
         <div class="actions">
           <button class="btn" data-go="patient">← Back</button>
@@ -155,7 +238,7 @@
         <label>Template name<input id="tplName" maxlength="80" placeholder="e.g. Medicine Unit 3 format" /></label>
 
         <div id="tplSource">
-          <p class="hint" style="margin-top:12px">Paste a blank template or an old discharge summary (remove names and IDs first), or add photos of a printed one. The AI learns your headings, order and phrasing; any patient details are replaced with placeholders.</p>
+          <p class="hint" style="margin-top:12px">Paste a blank template or an old discharge summary, or add photos of a printed one. The AI learns your headings, order and phrasing; any patient details are replaced with placeholders. Only the format is saved.</p>
           <textarea id="tplText" rows="8" placeholder="Paste your template or an old summary here…"></textarea>
           <div class="add-row" style="margin-top:10px">
             <label class="btn">📷 Photo<input id="tplCam" type="file" accept="image/*" capture="environment" hidden /></label>
@@ -163,6 +246,7 @@
             <span class="hint" style="margin:0">Up to 4 photos</span>
           </div>
           <div id="tplPhotos" class="photo-list"></div>
+          <label class="confirm"><input type="checkbox" id="tplClean" /> I have removed patient names, ID numbers and other identifiers from this text and these photos.</label>
           <div class="actions"><button class="btn primary" id="tplAnalyze">Read my format →</button></div>
         </div>
 
@@ -185,9 +269,13 @@
         </div>
       </div>
     </section>
+
+    <footer class="app-footer no-print">
+      <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · AI drafts must be verified by the treating doctor.
+    </footer>
   </main>
 
-  <!-- Overlays -->
+  <!-- ============ Overlays ============ -->
   <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Working…</p></div>
 
   <div id="maskModal" class="modal no-print" hidden>
@@ -212,7 +300,7 @@
       <ul class="feat" id="planFeatures"></ul>
       <div class="plans" id="plans"></div>
       <div class="actions tight"><button class="btn" id="planClose">Not now</button></div>
-      <p class="fine">Secure payment by Razorpay (UPI, cards, net banking). Renews automatically; cancel any time from the payment email.</p>
+      <p class="fine">Secure payment by Razorpay (UPI, cards, net banking). Renews automatically until you cancel. See <a href="terms.html#payments" target="_blank">cancellation &amp; refunds</a>.</p>
     </div>
   </div>
 

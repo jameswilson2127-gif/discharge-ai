@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Privacy Policy — Discharge AI</title>
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./"><span class="logo">Dx</span><span>Discharge AI</span></a>
+    <div class="account"><a class="btn small-top" href="./">← Back to app</a></div>
+  </header>
+
+  <main class="legal">
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: <span data-updated></span></p>
+
+    <div class="box">
+      <b>In short:</b> we store your account (your Google e-mail), your plan, your saved templates and counts of how often you use the AI. We do <b>not</b> store patient photographs, the information read from them, or the summaries you create. A patient name, if you type one, never leaves your device.
+    </div>
+
+    <h2>1. Who is responsible</h2>
+    <p><span data-app></span> is operated by <span data-op></span>. We are the Data Fiduciary for your account information. For patient information you submit, you or your Institution are the Data Fiduciary and we act as your Data Processor (see our <a href="terms.html">Terms of Use</a>). This policy follows the Digital Personal Data Protection Act, 2023 and the Digital Personal Data Protection Rules, 2025.</p>
+
+    <h2>2. What happens to patient information</h2>
+    <ol>
+      <li>You take or choose photos in your browser. Photos are re-encoded on your device, which removes embedded metadata such as location. You must black out identifiers, or confirm a page shows none, before a photo can be sent.</li>
+      <li>When you tap "Read photos", the photos are sent over an encrypted (HTTPS) connection to our server function, which passes them to Google's Gemini API to read the text.</li>
+      <li>The extracted information is returned to your browser. Our server also removes identifier-like numbers (for example Aadhaar, ABHA and phone numbers) as an extra safeguard. Nothing from the photos or the result is written to our database or logs. The photos exist only in the memory of that request.</li>
+      <li>You review the information on your device. When you tap "Write discharge summary", only the reviewed clinical information is sent the same way to write the draft text. The patient name and the dates you typed are not sent.</li>
+      <li>The draft appears in your browser for you to edit, print or copy. We do not keep a copy.</li>
+    </ol>
+    <p>We use Google's paid Gemini API service. Under Google's terms for paid services, Google does not use the content to improve its products; Google may keep it briefly to detect abuse, as described in its Gemini API terms.</p>
+
+    <h2>3. Information stored on your device</h2>
+    <ul>
+      <li><b>The case you are working on</b> (patient name and dates if you typed them, the reviewed information and the draft) is kept in this browser tab's session storage so a reload doesn't lose your work. It is deleted when you close the tab, sign out, press "New patient", clear it after printing, or automatically after <span data-ttl></span> minutes. Photos are kept in memory only and are lost on reload.</li>
+      <li><b>Your sign-in token and last-used template</b> are kept in local storage so you stay signed in.</li>
+    </ul>
+    <p>On a shared computer, always sign out when you finish.</p>
+
+    <h2>4. What we collect and store about you</h2>
+    <table>
+      <tr><th>Information</th><th>Why</th></tr>
+      <tr><td>Google account e-mail, name and profile picture link (from Google Sign-in)</td><td>To create and secure your account</td></tr>
+      <tr><td>Plan, subscription ID and payment records (payment ID, plan, amount, date)</td><td>To provide Pro and to keep accounts required by tax law</td></tr>
+      <tr><td>Usage records: time, type of AI action, success or failure, token counts and cost, and a short technical error message</td><td>To enforce plan limits, prevent abuse and manage costs. These never contain patient information.</td></tr>
+      <tr><td>Your saved templates (headings, model sentences with placeholders, field labels)</td><td>To write summaries in your format. When a template is made from a sample summary, patient-specific details are replaced with placeholders.</td></tr>
+      <tr><td>Your acceptance of the Terms (version, date, the statements you confirmed, and your browser type)</td><td>To record what you agreed to</td></tr>
+    </table>
+    <p>We do not sell your information, use it for advertising, or use any of it to train AI models.</p>
+
+    <h2>5. Service providers</h2>
+    <table>
+      <tr><th>Provider</th><th>Role</th></tr>
+      <tr><td>Supabase</td><td>Sign-in, database and server functions</td></tr>
+      <tr><td>Google</td><td>Gemini API (reading photos, writing drafts) and Google Sign-in</td></tr>
+      <tr><td>Razorpay</td><td>Payments and subscriptions</td></tr>
+      <tr><td>GitHub Pages</td><td>Hosting the website (sees your IP address when you load pages)</td></tr>
+      <tr><td>jsDelivr</td><td>Delivering an open-source code library to your browser</td></tr>
+    </table>
+    <p>Some of these providers process data on servers outside India. We use them only as permitted by Indian law, and each is bound by its own security and confidentiality commitments.</p>
+
+    <h2>6. Security</h2>
+    <p>All traffic is encrypted with HTTPS. Database access is restricted so each user can read only their own data, and administrative keys are kept only on the server. Patient content is not stored, so it cannot be exposed in a breach of our database. If a personal-data breach affecting you does occur, we will inform you and the authorities as the law requires.</p>
+
+    <h2>7. How long we keep information</h2>
+    <ul>
+      <li>Account information, templates and terms acceptances: until you delete your account.</li>
+      <li>Usage and payment records: kept after account deletion with the link to you removed, for accounting and as required by tax law.</li>
+    </ul>
+
+    <h2>8. Your rights</h2>
+    <ul>
+      <li><b>Access:</b> download everything we store about you from the account menu → "Download my data".</li>
+      <li><b>Correction:</b> edit your templates in the app, or write to us.</li>
+      <li><b>Erasure:</b> delete your account from the account menu → "Delete account". This cancels any subscription and erases your account, templates and terms history.</li>
+      <li><b>Nomination:</b> you may nominate someone to exercise these rights on your behalf if you die or become unable to; write to us.</li>
+      <li><b>Grievances:</b> write to <a data-mail></a>. We aim to reply within 7 days and in any case within the time the law allows. If you are not satisfied, you may approach the Data Protection Board of India.</li>
+    </ul>
+
+    <h2>9. Children</h2>
+    <p>The Service is not meant for anyone under 18, and we do not knowingly create accounts for them.</p>
+
+    <h2>10. Changes</h2>
+    <p>If we change this policy in a material way, we will ask you to review and accept it again before you continue using the AI features.</p>
+
+    <h2>11. Contact</h2>
+    <p><span data-op></span> · <a data-mail></a></p>
+  </main>
+
+  <footer class="site-footer legal" style="padding-top:0">
+    <span>© <span data-yr></span> Discharge AI</span>
+    <nav><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a></nav>
+  </footer>
+  <script type="module" src="legal.js"></script>
+</body>
+</html>

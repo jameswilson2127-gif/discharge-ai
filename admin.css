@@ -1,6 +1,6 @@
 .admin { max-width: 980px; margin: 0 auto; padding: 12px 12px 80px; }
 .gate { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; text-align: center; margin-top: 30px; }
-.tabs { position: sticky; top: 50px; z-index: 5; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px 0 10px; background: var(--bg); }
+.tabs { position: sticky; top: 58px; z-index: 5; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px 0 10px; background: var(--bg); }
 .tabs button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 8px 4px; font-weight: 600; color: var(--muted); cursor: pointer; }
 .tabs button.on { border-color: var(--accent); color: var(--accent); }
 .kicker { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 18px 2px 8px; }

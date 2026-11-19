@@ -1,5 +1,6 @@
 // extract — reads photos of progress sheets / investigations / treatment charts
-// with Gemini and returns structured, reviewable data. Nothing is stored.
+// with Gemini and returns structured, reviewable data. Nothing is stored:
+// photos live only in this request's memory, and only token counts/cost are logged.
 // Deploy: supabase functions deploy extract --no-verify-jwt
 
 const env = (k: string, d = "") => Deno.env.get(k) ?? d;
@@ -79,6 +80,36 @@ async function logUsage(row: Record<string, unknown>) {
 }
 
 // ---------- Gemini ----------
+// Parse without ever putting AI text into an error message (V8's JSON errors quote the input,
+// which could carry patient details into logs).
+function safeParse(text: string) {
+  try { return JSON.parse(text); } catch { throw new Error("AI returned malformed JSON"); }
+}
+
+// Defence in depth: strip identifier-like numbers even if they slip past the photo mask / prompt.
+const ID_PATTERNS: [RegExp, string][] = [
+  [/\b\d{2}-\d{4}-\d{4}-\d{4}\b/g, "[ID removed]"],                 // ABHA number
+  [/\b\d{4}[ -]\d{4}[ -]\d{4}\b/g, "[ID removed]"],                  // Aadhaar (spaced)
+  [/(?:\+91[ -]?|\b0)?\b[6-9]\d{4}[ -]?\d{5}\b/g, "[phone removed]"],  // Indian mobile
+  [/\b\d{10,}\b/g, "[number removed]"],                                // any long ID-like run
+  [/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email removed]"],
+];
+export function scrub(v: unknown): unknown {
+  if (typeof v === "string") return ID_PATTERNS.reduce((s, [re, r]) => s.replace(re, r), v);
+  if (Array.isArray(v)) return v.map(scrub);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x)]));
+  return v;
+}
+
+// Server-side check that the user has accepted the current Terms of Use.
+async function termsAccepted(uid: string) {
+  const need = Number(env("TERMS_VERSION", "1"));
+  const r = await fetch(`${env("SUPABASE_URL")}/rest/v1/profiles?id=eq.${uid}&select=terms_version`, { headers: serviceHeaders() });
+  if (!r.ok) return false;
+  const rows = await r.json();
+  return Number(rows?.[0]?.terms_version ?? 0) >= need;
+}
+
 async function callGemini(opts: {
   system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number;
 }) {
@@ -107,7 +138,7 @@ async function callGemini(opts: {
         .filter((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
         .map((p: { text: string }) => p.text).join("");
       if (!text) throw Object.assign(new Error(`Empty AI response (${cand?.finishReason ?? "no candidate"})`), { model, usage: data.usageMetadata });
-      return { data: JSON.parse(text), usage: data.usageMetadata ?? null, model };
+      return { data: safeParse(text), usage: data.usageMetadata ?? null, model };
     }
     last = `${r.status} ${await r.text()}`;
     if (r.status !== 429 && r.status < 500) break;
@@ -126,7 +157,7 @@ STRICT RULES
 2. If a word, number, drug name or dose is hard to read, write your best reading followed by " [?]" AND add an entry to "unclear_items". Doses, drug names, dates and lab values matter most.
 3. Keep standard medical abbreviations as written (TDS, BD, OD, HS, SOS, STAT, IV, IM, PO, Inj, Tab, Neb, s/p, k/c/o, etc.). Indian brand names are fine (e.g. Levera, Pantop, Emset, Duolin, Budecort).
 4. Dates as DD/MM/YYYY when the year is known, otherwise as written.
-5. Do NOT transcribe the patient's name, address, phone number, UHID, IPD number or Aadhaar number anywhere. Age and sex are allowed.
+5. PRIVACY: Do NOT transcribe any identifier anywhere: the patient's name, relatives'/attendants' names, address, phone number, e-mail, UHID, IPD/CR/MRD/registration number, bed or ward number, Aadhaar, ABHA, PM-JAY/insurance ID, or photographs of faces. Ignore them even if clearly visible. Age and sex are allowed. Refer to the person only as "the patient".
 6. Medications: one row per distinct drug order. If a dose was changed, make a separate row for each regimen with dates in "dates". Put the dosage form in "form" (INJ, TAB, CAP, SYP, NEB, INH, IVF, OINT, DROPS, SACHET, other). "on_discharge" is true only if the drug clearly appears in a discharge/advice-on-discharge list or the last day's orders of an improving patient explicitly marked for discharge; otherwise false.
 7. Investigations: one row per test result with its date. Put abnormal flag "H" or "L" only if printed or obvious from the printed reference range; otherwise "".
 8. Daily progress: one row per dated note, summarised faithfully in 1–3 short clinical sentences (vitals, key findings, plan changes, events).
@@ -204,6 +235,7 @@ Deno.serve(async (req: Request) => {
 
   const user = await getUser(req);
   if (!user) return json({ error: "Please sign in again." }, 401);
+  if (!(await termsAccepted(user.id))) return json({ error: "Please accept the Terms of Use to continue.", code: "terms" }, 428);
 
   let payload: { images?: { mime: string; data: string; kind: string }[] };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
@@ -248,7 +280,7 @@ Deno.serve(async (req: Request) => {
       thinkingBudget: Number(env("EXTRACT_THINKING_BUDGET", "1024")),
     });
     await logUsage({ user_id: user.id, kind: "extract", ok: true, model, ...costOf(usage, model) });
-    return json({ data, usage, quota: q });
+    return json({ data: scrub(data), quota: q });
   } catch (e) {
     await logUsage({ user_id: user.id, kind: "extract", ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
     await rpc("refund_quota", { p_user: user.id, p_kind: "extract" }).catch(() => {});
