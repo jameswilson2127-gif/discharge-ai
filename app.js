@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js";
+import { CONFIG } from "./config.js?v=3";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=3";
 
 /* ============================================================
    Setup & helpers
@@ -631,11 +631,13 @@ async function compress(file, max = 1600, quality = 0.8) {
   return c.toDataURL("image/jpeg", quality);
 }
 
+let adding = false; // stops two quick picks from both seeing the same free space
 async function addFiles(files, target, limit, kind) {
   const list = [...files].filter((f) => f.type.startsWith("image/"));
-  if (!list.length) return false;
+  if (!list.length || adding) return false;
   const room = limit - target.length;
-  if (room <= 0) { toast(`Maximum ${limit} photos.`, true); return false; }
+  if (room <= 0) { toast(`Maximum ${limit} photos. Remove one to add another.`, true); return false; }
+  adding = true;
   busy(`Preparing ${Math.min(list.length, room)} photo(s)`);
   try {
     for (const f of list.slice(0, room)) target.push({ id: uid(), kind, url: await compress(f) });
@@ -643,8 +645,9 @@ async function addFiles(files, target, limit, kind) {
     toast("Could not open one of the photos.", true);
   } finally {
     busy(false);
+    adding = false;
   }
-  if (list.length > room) toast(`Only the first ${limit} photos were added.`, true);
+  if (list.length > room) toast(`You picked ${list.length}. Only ${room} added — the limit is ${limit} photos per patient.`, true, 6000);
   return true;
 }
 
@@ -655,8 +658,14 @@ const idRow = (p, attr) => `<div class="row id-row">
   <button class="btn small ${p.clean ? "on" : ""}" data-${attr}="clean" ${p.masked ? "disabled" : ""}>${p.clean ? "No IDs ✓" : "No IDs"}</button>
 </div>`;
 
+const MAX_CASE_PHOTOS = 10;
 function renderPhotos() {
   const box = $("#photoList");
+  const n = state.photos.length, full = n >= MAX_CASE_PHOTOS;
+  $("#photoCount").textContent = `${n} / ${MAX_CASE_PHOTOS} photos${full ? " — limit reached" : ""}`;
+  $("#photoCount").classList.toggle("full", full);
+  for (const id of ["#camBtn", "#galBtn"]) $(id).classList.toggle("off", full);
+  $("#camInput").disabled = full; $("#galInput").disabled = full;
   if (!state.photos.length) {
     box.innerHTML = `<div class="empty">No photos yet. Add progress notes, investigation reports and the treatment chart.</div>`;
     return;
@@ -1065,7 +1074,7 @@ function bind() {
   bindPatientForm();
 
   // Case photos
-  const addCase = async (files) => { if (await addFiles(files, state.photos, 10, $("#defaultKind").value)) renderPhotos(); };
+  const addCase = async (files) => { if (await addFiles(files, state.photos, MAX_CASE_PHOTOS, $("#defaultKind").value)) renderPhotos(); };
   $("#camInput").addEventListener("change", (e) => { addCase(e.target.files); e.target.value = ""; });
   $("#galInput").addEventListener("change", (e) => { addCase(e.target.files); e.target.value = ""; });
   $("#photoList").addEventListener("click", onPhotoAction);

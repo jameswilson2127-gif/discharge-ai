@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -170,8 +170,8 @@
       <h2>Case-file photos</h2>
       <p class="hint">Flat, well lit, one page per photo, up to 10. For long stays, pick the admission notes, the last few progress notes, key reports and the drug chart. Before reading, each photo must be either <b>masked</b> (names and IDs blacked out) or marked <b>No IDs</b>.</p>
       <div class="add-row">
-        <label class="btn primary">📷 Camera<input id="camInput" type="file" accept="image/*" capture="environment" hidden /></label>
-        <label class="btn">🖼 Gallery<input id="galInput" type="file" accept="image/*" multiple hidden /></label>
+        <label class="btn primary" id="camBtn">📷 Camera<input id="camInput" type="file" accept="image/*" capture="environment" hidden /></label>
+        <label class="btn" id="galBtn">🖼 Gallery<input id="galInput" type="file" accept="image/*" multiple hidden /></label>
         <label class="inline">Tag new photos as
           <select id="defaultKind">
             <option value="progress">Progress notes</option>
@@ -182,6 +182,7 @@
           </select>
         </label>
       </div>
+      <p class="photo-count" id="photoCount"></p>
       <div id="photoList" class="photo-list"></div>
       <div class="actions">
         <button class="btn" data-go="patient">← Back</button>
@@ -306,6 +307,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>
