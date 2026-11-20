@@ -171,9 +171,15 @@ You are given (1) the TEMPLATE: the sections you must write, each with guidance 
 
 STYLE
 - Formal clinical English, past tense, third person ("the patient", "he"/"she" per sex), flowing prose like a senior resident. No bullet points inside prose unless the guidance uses them.
-- Reproduce each section's guidance closely: same order of ideas, same sentence patterns and stock phrases, same level of detail. Fill [placeholders] from the case data; drop clauses that don't apply to this patient.
+- Reproduce each section's guidance closely: same order of ideas, same sentence patterns and stock phrases. Fill [placeholders] from the case data; drop clauses that don't apply to this patient.
 - Separate paragraphs with a blank line.
 - Quote key abnormal values with units, and serial trends where useful (e.g. creatinine fell from 9.67 to 6.12 mg/dL).
+
+HOSPITAL COURSE (most important part — must be DETAILED)
+- Wherever the template describes the course in hospital (a "Hospital Course" section, or the course part of a "Clinical Summary"/"Case Summary"), write a full chronological account. Use the template's opening and closing phrases, but do NOT shorten the course to match the template's length.
+- Cover EVERY dated progress note and event in date order, using dates ("On 12/11/2026…", "On day 3 of admission…") or clearly grouped phases for long stays. For each day or phase include, where documented: clinical status and symptoms; vitals with values and their trend; oxygen/ventilatory support; examination changes; investigations reported, with values and serial trends; treatment started, stopped or modified, naming the drugs (doses where clinically relevant: antibiotics, steroids, insulin, inotropes, anticoagulants, diuretics); fluids, transfusions and procedures; specialist consultations and their advice; complications and how they were managed.
+- Then describe the state at the end of the stay as required by OUTCOME.
+- Length scales with the stay and the documentation: typically 3–6 paragraphs and 250–700 words; a short uneventful stay may be shorter, but never leave out a documented change, result or event. Detail must come only from the case data — never pad with generic sentences.
 
 OUTCOME
 - Any part describing the end of the stay must match OUTCOME:

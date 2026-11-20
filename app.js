@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=3";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=3";
+import { CONFIG } from "./config.js?v=4";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=4";
 
 /* ============================================================
    Setup & helpers
@@ -900,7 +900,7 @@ function renderReview() {
           if (c.bool) return `<td class="chk"><input type="checkbox" ${a} ${row[c.k] ? "checked" : ""} /></td>`;
           const v = row[c.k] ?? "";
           return c.area
-            ? `<td><textarea rows="2" ${a} class="${unclearCls(v)}">${esc(v)}</textarea></td>`
+            ? `<td><textarea rows="${Math.min(10, Math.max(2, Math.ceil(String(v).length / 70)))}" ${a} class="${unclearCls(v)}">${esc(v)}</textarea></td>`
             : `<td><input ${a} class="${unclearCls(v)}" value="${esc(v)}" /></td>`;
         }).join("") + `<td><button class="x" data-del="${s.table}" data-row="${ri}" aria-label="Delete row">×</button></td></tr>`;
       });
