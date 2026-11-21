@@ -47,3 +47,15 @@
 - Account menu: Download my data (DPDP access) and Delete account (erasure; cancels the Razorpay subscription).
 - Terms of Use, Privacy Policy, refund/cancellation terms, grievance contact.
 - Google Fonts removed (one less third party seeing users' IPs). New design.
+
+## AI model settings (Supabase → Edge Functions → Secrets)
+
+| Secret | What it does | Suggested |
+|---|---|---|
+| `GEMINI_VISION_MODEL` | Model that reads the photos (handwriting). Most important for quality. | a full Flash model, e.g. `gemini-3.5-flash` |
+| `GEMINI_TEXT_MODEL` | Model that writes the summary from the reviewed data. | `gemini-3.1-flash-lite` is fine; use Flash for better prose |
+| `EXTRACT_THINKING_LEVEL` | Gemini 3 thinking for reading: `low` / `high` | `high` (default) |
+| `GENERATE_THINKING_LEVEL` | Thinking for writing | `low` (default) |
+| `PRICES_JSON` | USD per 1M tokens so the admin cost is right, e.g. `{"gemini-3.5-flash":[0.5,3]}` | copy from Google's pricing page |
+
+If `GEMINI_VISION_MODEL` / `GEMINI_TEXT_MODEL` are not set, both use `GEMINI_MODEL`.

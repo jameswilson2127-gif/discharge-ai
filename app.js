@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=5";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=5";
-import { buildChronology } from "./chrono.js?v=5";
+import { CONFIG } from "./config.js?v=6";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=6";
+import { buildChronology } from "./chrono.js?v=6";
 
 /* ============================================================
    Setup & helpers
@@ -589,7 +589,9 @@ function fillPatientForm() {
     const el = $(`#p_${f}`);
     if (el) el.value = state.patient[f] ?? "";
   }
-  if (!state.patient.dept) { state.patient.dept = currentTemplate().department || CONFIG.DEFAULT_DEPARTMENT; $("#p_dept").value = state.patient.dept; }
+  // Leave empty so the department read from the sheets can be used; show the template's as a hint.
+  $("#p_dept").placeholder = `From the sheets, else "${currentTemplate().department || CONFIG.DEFAULT_DEPARTMENT || ""}"`;
+  if (state.patient.dept === (currentTemplate().department || CONFIG.DEFAULT_DEPARTMENT)) { state.patient.dept = ""; $("#p_dept").value = ""; }
   renderTemplatePicker();
 }
 function bindPatientForm() {
@@ -776,7 +778,7 @@ function openLightbox(p, title) {
 }
 
 /* ---------- Extract ---------- */
-const ARR_KEYS = ["past_events", "known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
+const ARR_KEYS = ["past_events", "held_drugs", "pending_investigations", "known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
 function normalise(d) {
   d = d && typeof d === "object" ? d : {};
   for (const k of ARR_KEYS) if (!Array.isArray(d[k])) d[k] = [];
@@ -824,6 +826,7 @@ const SECTIONS = [
   { title: "Patient (from photos)", fields: [
     { k: "age", label: "Age" }, { k: "sex", label: "Sex" },
     { k: "admission_date", label: "Admission date (orders the timeline)" }, { k: "discharge_date", label: "Discharge date" },
+    { k: "department", label: "Treating department (from the sheets)", span: 2 },
   ] },
   { title: "Diagnosis", fields: [
     { k: "diagnoses", label: "Diagnoses (one per line, most important first)", type: "lines" },
@@ -864,6 +867,13 @@ const SECTIONS = [
     { k: "route", label: "Route", w: 60 }, { k: "frequency", label: "Freq", w: 70 },
     { k: "dates", label: "Dates / duration", w: 120 }, { k: "on_discharge", label: "On discharge", bool: true, w: 70 },
   ] },
+  { title: "Drugs on hold", table: "held_drugs", cols: [
+    { k: "drug", label: "Drug", w: 160 }, { k: "reason", label: "Reason / until", area: true },
+  ] },
+  { title: "Discharge plan", fields: [
+    { k: "pending_investigations", label: "Reports awaited (one per line)", type: "lines" },
+    { k: "follow_up_plan", label: "Follow-up plan", type: "text", span: 2 },
+  ] },
   { title: "Condition at last note", obj: "condition_at_last_note", fields: [
     { k: "status", label: "Status", type: "text", span: 2 },
     { k: "bp", label: "BP" }, { k: "pulse", label: "Pulse" }, { k: "rr", label: "RR" }, { k: "spo2", label: "SpO₂" },
@@ -882,6 +892,7 @@ function fieldHtml(f, val, attrs) {
 }
 
 function renderReview() {
+  if (state.data) state.data = normalise(state.data); // older saved cases may lack newer fields
   const d = state.data;
   $("#thumbStrip").innerHTML = state.photos.length
     ? state.photos.map((p, i) => `<img src="${p.url}" data-i="${i}" alt="Photo ${i + 1}" />`).join("")
@@ -989,7 +1000,7 @@ async function generate() {
     const r = await api("generate", {
       case: caseData,
       template,
-      options: { outcome: P.outcome || "discharged", followup: P.followup || "", monitor: P.monitor || "", extra: P.extra || "" },
+      options: { outcome: P.outcome || "discharged", followup: P.followup || "", monitor: P.monitor || "", extra: P.extra || "", dept: deptName() },
     });
     state.draft = r.data;
     state.draftTemplate = template;
@@ -1023,7 +1034,7 @@ function renderDocIfNeeded(force = false) {
   if (!state.draft) return;
   doc.innerHTML = !force && state.docHtml
     ? state.docHtml
-    : buildDoc({ ...state.patient, age: state.data?.age || "", sex: state.data?.sex || "" }, state.data, state.draft, state.draftTemplate || currentTemplate());
+    : buildDoc({ ...state.patient, dept: deptName(), age: state.data?.age || "", sex: state.data?.sex || "" }, state.data, state.draft, state.draftTemplate || currentTemplate());
   updateDocWarn();
 }
 
@@ -1032,6 +1043,14 @@ const onDocEdit = debounce(() => {
   updateDocWarn();
   saveCase();
 }, 500);
+
+// Department for the header and prose: typed on step 1 > read from the sheets > template default.
+function deptName() {
+  if (state.patient.dept) return state.patient.dept;
+  const d = String(state.data?.department || "").trim();
+  if (d) return /^department/i.test(d) ? d : `Department of ${d}`;
+  return currentTemplate().department || "";
+}
 
 function setVerified(v) {
   $("#finalVerify").checked = v;

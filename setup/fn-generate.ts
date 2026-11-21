@@ -95,8 +95,13 @@ async function termsAccepted(uid: string) {
   return Number(rows?.[0]?.terms_version ?? 0) >= need;
 }
 
+// Gemini 3.x models take a thinking *level*; older models take a token budget.
+function thinkingCfg(model: string, budget: number, level: string) {
+  return /^gemini-3/.test(model) ? (level ? { thinkingLevel: level } : undefined) : { thinkingBudget: budget };
+}
+
 async function callGemini(opts: {
-  system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number;
+  system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number; thinkingLevel: string;
 }) {
   const model = env("GEMINI_TEXT_MODEL", env("GEMINI_MODEL", "gemini-2.5-flash"));
   const body = JSON.stringify({
@@ -107,7 +112,7 @@ async function callGemini(opts: {
       responseMimeType: "application/json",
       responseSchema: opts.schema,
       maxOutputTokens: opts.maxTokens,
-      thinkingConfig: { thinkingBudget: opts.thinkingBudget },
+      thinkingConfig: thinkingCfg(model, opts.thinkingBudget, opts.thinkingLevel),
     },
   });
   let last = "";
@@ -204,13 +209,15 @@ OUTCOME
 
 ABSOLUTE RULES
 1. Use ONLY facts present in the case data. Never invent symptoms, values, doses, dates, consultations or improvements.
-2. Where the template needs a value that is not in the data, write ___ (three underscores). Never guess vitals.
+2. Where the template needs a value that is not in the data, write ___ (three underscores). Never guess vitals, and never write that something "was not recorded". Leave out template clauses about things that are not documented (e.g. oral feeds, urine output, ambulation) instead of assuming them.
 3. Copy drug names, doses and lab values exactly as given. Do not change units.
 4. Items marked [?] are unverified: keep the [?] marker if you use them.
 5. Never write the patient's name, any relative's name, address, phone or any ID number. Use "the patient".
 6. Do not write the sections that the app fills itself (listed under APP-FILLED), and do not reproduce those lists inside your prose.
 7. You are a documentation aid, not a clinician: do not add any diagnosis, drug, dose, investigation, referral or treatment recommendation that is not in the case data or the doctor's instructions. Warning symptoms in advice sections must be generic return-to-hospital signs appropriate to the documented illness.
-8. final_diagnosis: primary diagnosis first, then complications, then comorbidities/habits, using the doctor's own diagnosis wording (tidy capitalisation only), unless the template's diagnosis guidance says otherwise.`;
+8. Department and follow-up: use DEPARTMENT (below) for the department name in prose and follow-up; never assume "General Medicine" unless that is the department. Advice/follow-up sections must mention drugs kept on hold (held_drugs), awaited reports (pending_investigations) and follow_up_plan when present, plus discharge drugs as listed.
+9. Write units with values. Preserve the meaning of "suspected", "?" and negated history exactly.
+10. final_diagnosis: primary diagnosis first, then complications, then comorbidities/habits, using the doctor's own diagnosis wording, expanded only with qualifiers present in the case data (suspected cause, stage, relapse, "status post" procedures and transplants with years, current therapy) — e.g. "Acute gastroenteritis (suspected infective vs drug-induced) in a case of relapsed Multiple Myeloma (ISS stage I), s/p autologous HSCT (2024), on Bortezomib". Follow the template's diagnosis guidance if it says otherwise.`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -256,6 +263,7 @@ Deno.serve(async (req: Request) => {
   const ctx = [
     `DOCUMENT TITLE: ${tpl.title}`,
     `OUTCOME: ${OUTCOMES[o.outcome] ?? OUTCOMES.discharged}`,
+    `DEPARTMENT: ${String(o.dept || (c as Record<string, unknown>).department || (payload.template as Record<string, unknown> | undefined)?.department || "___").slice(0, 120)}`,
     o.followup ? `FOLLOW-UP INTERVAL: ${String(o.followup).slice(0, 60)}` : "FOLLOW-UP INTERVAL: not specified (use ___)",
     o.monitor ? `PARAMETERS TO MONITOR: ${String(o.monitor).slice(0, 200)}` : "",
     o.extra ? `ADDITIONAL INSTRUCTIONS FROM THE DOCTOR: ${scrub(String(o.extra).slice(0, 600))}` : "",
@@ -279,8 +287,9 @@ Deno.serve(async (req: Request) => {
       system: SYSTEM,
       parts: [{ text: `${ctx}\n\nVERIFIED CASE DATA (JSON):\n${caseText}` }],
       schema: { type: "OBJECT", properties, required },
-      maxTokens: Number(env("GENERATE_MAX_TOKENS", "8000")),
-      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "0")),
+      maxTokens: Number(env("GENERATE_MAX_TOKENS", "16000")),
+      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "1024")),
+      thinkingLevel: env("GENERATE_THINKING_LEVEL", "low"),
     });
     await logUsage({ user_id: user.id, kind: "generate", ok: true, model, ...costOf(usage, model) });
     const sections: Record<string, string> = {};

@@ -110,10 +110,15 @@ async function termsAccepted(uid: string) {
   return Number(rows?.[0]?.terms_version ?? 0) >= need;
 }
 
+// Gemini 3.x models take a thinking *level*; older models take a token budget.
+function thinkingCfg(model: string, budget: number, level: string) {
+  return /^gemini-3/.test(model) ? (level ? { thinkingLevel: level } : undefined) : { thinkingBudget: budget };
+}
+
 async function callGemini(opts: {
-  system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number;
+  system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number; thinkingLevel: string;
 }) {
-  const model = env("GEMINI_MODEL", "gemini-2.5-flash");
+  const model = env("GEMINI_VISION_MODEL", env("GEMINI_MODEL", "gemini-2.5-flash"));
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: opts.system }] },
     contents: [{ role: "user", parts: opts.parts }],
@@ -122,7 +127,7 @@ async function callGemini(opts: {
       responseMimeType: "application/json",
       responseSchema: opts.schema,
       maxOutputTokens: opts.maxTokens,
-      thinkingConfig: { thinkingBudget: opts.thinkingBudget },
+      thinkingConfig: thinkingCfg(model, opts.thinkingBudget, opts.thinkingLevel),
     },
   });
   let last = "";
@@ -151,6 +156,17 @@ async function callGemini(opts: {
 const SYSTEM = `You are a meticulous medical records transcriber in an Indian government teaching hospital (Department of General Medicine).
 You receive photos of a single in-patient's case file: handwritten progress notes, printed or handwritten investigation reports, and treatment/medication charts.
 Your job is ONLY to transcribe and organise what is written. You are not diagnosing or advising.
+Read EVERY photo completely, including margins, boxed text, arrows and side columns. Photos may be rotated; read them in any orientation. A single note often mixes history, old reports, examination and plan on one page.
+
+HOW INDIAN WARD NOTES ARE WRITTEN (read them this way)
+- Vitals jotted in the left margin under a date/time (e.g. "20/11/26 06:10 PM  BP-130/100 PR-88 SpO2-97%") are the vitals at that time. The first dated note with vitals = admission vitals.
+- "c/o" complaints of; "k/c/o" known case of; "h/o" history of; "s/p" or "S/P" status post; "O/E" on examination; "P/A" per abdomen; "B/L AE ⊕ NBVS" bilateral air entry equal, normal vesicular breath sounds; "S1S2 ⊕ M0" S1 S2 heard, no murmur; "Imp"/"Impression" working diagnosis; "Adv" advice/orders; "Rx" treatment.
+- "W/H" or "w/h" = WITHHELD (drug stopped); "c/w" = CONTINUE WITH; "STAT" once now; "SOS" as needed; "I/O charting" intake-output charting; "Inv N/A" investigations not available; "sent inv" tests sent.
+- "No X" / "No h/o X" / "N/H/O" = negative history (the patient did NOT have X). Never record a negated item as something that happened.
+- "↓" or "→" between lines means "then / followed by / led to": keep the sequence.
+- "?X" means suspected X — keep the "?" meaning as "suspected".
+- Crossed-out text is a correction: ignore it, unless the same content appears un-crossed elsewhere.
+- Lab shorthand: "CBC 10.8/6.78/174K" = Hb/TLC/platelets; "RFT 11/0.55" = urea/creatinine; "LFT 0.46/0.20 24/15/105 7.1/4.51/2.6" = T.bil/D.bil, SGOT/SGPT/ALP, total protein/albumin/globulin; "SE" serum electrolytes. Split these into separate investigation rows with the right test names.
 
 STRICT RULES
 1. Never invent, infer or "correct" values. If something is not written, leave the field empty.
@@ -158,20 +174,22 @@ STRICT RULES
 3. Keep standard medical abbreviations as written (TDS, BD, OD, HS, SOS, STAT, IV, IM, PO, Inj, Tab, Neb, s/p, k/c/o, etc.). Indian brand names are fine (e.g. Levera, Pantop, Emset, Duolin, Budecort).
 4. Dates as DD/MM/YYYY when the year is known, otherwise as written.
 5. PRIVACY: Do NOT transcribe any identifier anywhere: the patient's name, relatives'/attendants' names, address, phone number, e-mail, UHID, IPD/CR/MRD/registration number, bed or ward number, Aadhaar, ABHA, PM-JAY/insurance ID, or photographs of faces. Ignore them even if clearly visible. Age and sex are allowed. Refer to the person only as "the patient".
-6. Medications: one row per distinct drug order. If a dose was changed, make a separate row for each regimen with dates in "dates". Put the dosage form in "form" (INJ, TAB, CAP, SYP, NEB, INH, IVF, OINT, DROPS, SACHET, other). "on_discharge" is true only if the drug clearly appears in a discharge/advice-on-discharge list or the last day's orders of an improving patient explicitly marked for discharge; otherwise false.
-7. Investigations: one row per test result with its date. Include reports from BEFORE this admission (outside/referral/previous reports, old discharge cards) with their own report dates — never re-date them to the admission. Put abnormal flag "H" or "L" only if printed or obvious from the printed reference range; otherwise "".
+6. Medications: one row per distinct drug order, including additives (e.g. "KCl 10 mEq/L in RL"). If a dose was changed, make a separate row for each regimen with dates in "dates". Put the dosage form in "form" (INJ, TAB, CAP, SYP, NEB, INH, IVF, OINT, DROPS, SACHET, other). "on_discharge" is true if the drug appears in a discharge/advice list, OR in the "Adv"/"c/w" orders of the LAST dated note of a patient who is improving or being discharged; false for drugs that were withheld or stopped, and for one-time (STAT) doses.
+7. Investigations: one row per numeric test result with its date and unit if written; add the conventional unit only when the test has one standard unit (Hb g/dL; urea, creatinine, bilirubin mg/dL; Na, K, Cl mmol/L; SGOT, SGPT, ALP U/L; total protein, albumin, globulin g/dL; ESR mm/hr; TLC and platelets ×10³/µL when written with "K"). Specialised or descriptive results — bone marrow, flow cytometry (list EVERY marker and whether positive/negative), serum free light chains with ratio, SPEP/immunofixation, MRD, PET-CT, CT/MRI/USG, biopsy, cultures, echo — go in "imaging_and_other_tests" with their own dates and the full finding. Include reports from BEFORE this admission (outside/referral/previous reports, old discharge cards) with their own report dates — never re-date them to the admission. Put abnormal flag "H" or "L" only if printed or obvious from the printed reference range; otherwise "".
 8. Daily progress: one row per dated note (if a day has several notes, e.g. morning/evening/night, keep them in that day's row in time order). Transcribe faithfully and in DETAIL, keeping every number. Cover whatever is written of: complaints/symptoms; vitals (BP, PR, RR, SpO2 with O2 support, temperature, GCS, RBS); intake/output and urine output; examination findings by system; investigations reported or reviewed that day with values; treatment changes (drugs started, stopped or dose changed, by name; fluids, oxygen, transfusions); procedures; specialist opinions and their advice; the plan. Usually 3–8 sentences per day. Do not shorten to a vague summary such as "patient stable".
 9. Events: significant events (procedures, dialysis, intubation, transfusion, arrest/CPR, specialist consults, complications) with date and time if written.
 10. Past history: fill "past_events" with every earlier illness, diagnosis, hospitalisation, procedure and long-term treatment, keeping when it happened as written. Durations such as "k/c/o T2DM x 8 yrs" go here too ("8 years back"). Convert relative times only if the note gives the reference date.
-11. Dates matter: copy every date written on notes, reports and charts so events can be placed in order.
-12. If a photo is unreadable or irrelevant, mention it in "unclear_items".`;
+11. Discharge plan: drugs withheld/on hold → "held_drugs"; tests sent or planned whose results are awaited → "pending_investigations"; follow-up instructions (OPD, unit, timing) → "follow_up_plan".
+12. "department": the treating department written on the sheets (e.g. "Medical Oncology"), not the department printed on a borrowed form.
+13. Dates matter: copy every date written on notes, reports and charts so events can be placed in order.
+14. If a photo is unreadable or irrelevant, mention it in "unclear_items".`;
 
 const S = { type: "STRING" };
 const SCHEMA = {
   type: "OBJECT",
   properties: {
     age: S, sex: { type: "STRING", description: "Male, Female or empty" },
-    admission_date: S, discharge_date: S,
+    admission_date: S, discharge_date: S, department: S,
     known_case_of: { type: "ARRAY", items: S, description: "Pre-existing comorbidities / habits (e.g. T2DM, HTN, alcohol use, smoker)" },
     chief_complaints: { type: "ARRAY", items: S, description: "Each with duration, e.g. 'Fever x 4 days'" },
     history_of_present_illness: { type: "STRING", description: "Detailed, in time order, with durations and sequence of symptoms exactly as written" },
@@ -223,6 +241,13 @@ const SCHEMA = {
         required: ["drug"],
       },
     },
+    held_drugs: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { drug: S, reason: S }, required: ["drug"] },
+      description: "Drugs withheld / kept on hold, with the reason if written",
+    },
+    pending_investigations: { type: "ARRAY", items: S, description: "Tests sent or planned whose results are awaited" },
+    follow_up_plan: S,
     condition_at_last_note: {
       type: "OBJECT",
       properties: { status: S, bp: S, pulse: S, rr: S, spo2: S, other: S },
@@ -283,8 +308,9 @@ Deno.serve(async (req: Request) => {
   try {
     const { data, usage, model } = await callGemini({
       system: SYSTEM, parts, schema: SCHEMA,
-      maxTokens: Number(env("EXTRACT_MAX_TOKENS", "12000")),
-      thinkingBudget: Number(env("EXTRACT_THINKING_BUDGET", "1024")),
+      maxTokens: Number(env("EXTRACT_MAX_TOKENS", "32000")),
+      thinkingBudget: Number(env("EXTRACT_THINKING_BUDGET", "4096")),
+      thinkingLevel: env("EXTRACT_THINKING_LEVEL", "high"),
     });
     await logUsage({ user_id: user.id, kind: "extract", ok: true, model, ...costOf(usage, model) });
     return json({ data: scrub(data), quota: q });

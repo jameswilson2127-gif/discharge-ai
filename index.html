@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -159,7 +159,7 @@
         </label>
         <label>Follow-up after<input id="p_followup" placeholder="e.g. 7 days" /></label>
         <label>Monitor at home<input id="p_monitor" placeholder="e.g. BP, blood sugar" /></label>
-        <label class="span2">Department (printed header)<input id="p_dept" /></label>
+        <label class="span2"><span>Department <small>optional, overrides the one on the sheets</small></span><input id="p_dept" /></label>
         <label class="span2"><span>Extra instructions for the AI <small>no names or IDs</small></span><textarea id="p_extra" rows="2" placeholder="e.g. mention nephrology review on 25/09; keep it concise"></textarea></label>
       </div>
       <div class="actions"><button class="btn primary" data-go="photos">Next: photos →</button></div>
@@ -307,6 +307,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=5"></script>
+  <script type="module" src="app.js?v=6"></script>
 </body>
 </html>
