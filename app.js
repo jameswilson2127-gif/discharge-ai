@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=6";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=6";
-import { buildChronology } from "./chrono.js?v=6";
+import { CONFIG } from "./config.js?v=7";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=7";
+import { buildChronology } from "./chrono.js?v=7";
 
 /* ============================================================
    Setup & helpers
@@ -615,7 +615,7 @@ function loadImage(src) {
   return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
 }
 
-async function compress(file, max = 1600, quality = 0.8) {
+async function compress(file, max = 1600, quality = 0.75) {
   let src;
   try {
     src = await createImageBitmap(file, { imageOrientation: "from-image" });
@@ -661,7 +661,7 @@ const idRow = (p, attr) => `<div class="row id-row">
   <button class="btn small ${p.clean ? "on" : ""}" data-${attr}="clean" ${p.masked ? "disabled" : ""}>${p.clean ? "No IDs ✓" : "No IDs"}</button>
 </div>`;
 
-const MAX_CASE_PHOTOS = 10;
+const MAX_CASE_PHOTOS = 15;
 function renderPhotos() {
   const box = $("#photoList");
   const n = state.photos.length, full = n >= MAX_CASE_PHOTOS;

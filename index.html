@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -168,7 +168,7 @@
     <!-- STEP 2 -->
     <section id="step-photos" class="step no-print" hidden>
       <h2>Case-file photos</h2>
-      <p class="hint">Flat, well lit, one page per photo, up to 10. For long stays, pick the admission notes, the last few progress notes, key reports and the drug chart. Before reading, each photo must be either <b>masked</b> (names and IDs blacked out) or marked <b>No IDs</b>.</p>
+      <p class="hint">Flat, well lit, one page per photo, up to 15. For long stays, pick the admission notes, the last few progress notes, key reports and the drug chart. Before reading, each photo must be either <b>masked</b> (names and IDs blacked out) or marked <b>No IDs</b>.</p>
       <div class="add-row">
         <label class="btn primary" id="camBtn">📷 Camera<input id="camInput" type="file" accept="image/*" capture="environment" hidden /></label>
         <label class="btn" id="galBtn">🖼 Gallery<input id="galInput" type="file" accept="image/*" multiple hidden /></label>
@@ -307,6 +307,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=6"></script>
+  <script type="module" src="app.js?v=7"></script>
 </body>
 </html>

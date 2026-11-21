@@ -1,5 +1,5 @@
 // Fills operator / contact details into the Terms and Privacy pages from config.js.
-import { CONFIG } from "./config.js?v=6";
+import { CONFIG } from "./config.js?v=7";
 
 const op = CONFIG.OPERATOR_NAME?.trim() || "the operator of Discharge AI";
 const mail = CONFIG.CONTACT_EMAIL || "";

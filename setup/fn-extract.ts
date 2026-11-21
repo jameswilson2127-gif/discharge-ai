@@ -13,9 +13,9 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "content-type": "application/json" } });
 
-const MAX_IMAGES = 10;
+const MAX_IMAGES = 15;
 const MAX_IMAGE_B64 = 3_000_000; // ~2.2 MB per image after client compression
-const MAX_TOTAL_B64 = 9_000_000;
+const MAX_TOTAL_B64 = 13_000_000;
 const OK_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 const LABELS: Record<string, string> = {
   progress: "Progress sheet / clinical notes",
