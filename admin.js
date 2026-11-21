@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js";
-import { esc } from "./doc.js";
+import { CONFIG } from "./config.js?v=8";
+import { esc } from "./doc.js?v=8";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);
@@ -178,6 +178,64 @@ async function loadUsage() {
     : `<p class="hint">No errors. 🎉</p>`;
 }
 
+/* ---------- cost per discharge / per user ---------- */
+const cases = { rows: [], total: 0 }, ucost = { rows: [], total: 0 };
+const PAGE = 20;
+const timeShort = (d) => new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const shortModel = (m) => String(m || "—").replace(/^gemini-/, "");
+
+// Monthly income from a user's plan, in ₹ (from the display prices in config.js).
+function planIncome(u) {
+  if (!u.pro) return 0;
+  const price = (id) => Number(String((CONFIG.PLANS || []).find((p) => p.id === id)?.price || "0").replace(/[^\d.]/g, "")) || 0;
+  if (u.plan === "monthly") return price("monthly");
+  if (u.plan === "yearly") return price("yearly") / 12;
+  return 0; // gifted / manual Pro
+}
+
+async function loadCases(reset = true) {
+  if (reset) cases.rows = [];
+  const r = await api("cases", { limit: PAGE, offset: cases.rows.length });
+  cases.rows.push(...(r.rows || []));
+  cases.total = n(r.total);
+  if (reset) {
+    const m = r.month || {};
+    $("#caseCards").innerHTML = [
+      card(rupees(m.avg_usd), "Average cost per discharge", `${int(m.cases)} discharges this month`, "hero"),
+      card(rupees(m.max_usd), "Most expensive discharge"),
+      card(rupees(n(m.avg_usd) * n(settings?.pro_extract || 0)), "If a Pro user hits the limit", `${int(settings?.pro_extract || 0)} patients × average`),
+    ].join("");
+    const bm = m.by_model || [];
+    $("#modelTable").innerHTML = bm.length
+      ? `<thead><tr><th>Reading model</th><th>Discharges</th><th>Average cost</th></tr></thead><tbody>${bm.map((x) => `<tr><td>${esc(shortModel(x.model))}</td><td>${int(x.cases)}</td><td>${rupees(x.avg_usd)}</td></tr>`).join("")}</tbody>`
+      : "";
+  }
+  $("#caseTable").innerHTML = `<thead><tr><th>When</th><th>User</th><th>Photos</th><th>Reads</th><th>Drafts</th><th>Cost</th><th>Models</th></tr></thead>
+    <tbody>${cases.rows.length ? cases.rows.map((c) => `<tr>
+      <td>${timeShort(c.at)}</td><td class="em">${esc(c.email || "deleted user")}</td><td>${c.photos ?? "—"}</td>
+      <td>${int(c.reads)}</td><td>${int(c.drafts)}${n(c.errors) ? ` <b style="color:var(--danger)" title="failed calls">· ${int(c.errors)}✕</b>` : ""}</td>
+      <td><b>${rupees(c.cost_usd)}</b></td><td class="mdl">${esc(shortModel(c.read_model))}${c.write_model && c.write_model !== c.read_model ? ` / ${esc(shortModel(c.write_model))}` : ""}</td></tr>`).join("")
+      : `<tr><td colspan="7" style="text-align:center;color:var(--muted)">No discharges tracked yet. New patients will appear here.</td></tr>`}</tbody>`;
+  $("#moreCases").hidden = cases.rows.length >= cases.total;
+}
+
+async function loadUserCosts(reset = true) {
+  if (reset) ucost.rows = [];
+  const r = await api("user_costs", { limit: PAGE, offset: ucost.rows.length });
+  ucost.rows.push(...(r.rows || []));
+  ucost.total = n(r.total);
+  $("#userCostTable").innerHTML = `<thead><tr><th>User</th><th>Plan</th><th>Discharges</th><th>AI cost</th><th>Per discharge</th><th>Income</th><th>Margin</th></tr></thead>
+    <tbody>${ucost.rows.length ? ucost.rows.map((u) => {
+      const cost = n(u.cost_usd) * fx, inc = planIncome(u), margin = inc - cost;
+      const plan = u.pro ? (u.plan === "yearly" ? "Pro yearly" : u.plan === "monthly" ? "Pro monthly" : "Pro (gifted)") : "Free";
+      return `<tr><td class="em">${esc(u.email || "deleted user")}</td><td>${plan}</td><td>${int(u.discharges)}</td>
+        <td>${rupees(u.cost_usd)}</td><td>${n(u.discharges) ? rupees(n(u.cost_usd) / n(u.discharges)) : "—"}</td>
+        <td>₹${Math.round(inc).toLocaleString("en-IN")}</td>
+        <td><b style="color:${margin < 0 ? "var(--danger)" : "#1b7a43"}">${margin < 0 ? "−" : ""}₹${Math.abs(margin) < 10 ? Math.abs(margin).toFixed(1) : Math.round(Math.abs(margin)).toLocaleString("en-IN")}</b></td></tr>`;
+    }).join("") : `<tr><td colspan="7" style="text-align:center;color:var(--muted)">No usage this month</td></tr>`}</tbody>`;
+  $("#moreUserCosts").hidden = ucost.rows.length >= ucost.total;
+}
+
 /* ---------- settings ---------- */
 const SKEYS = ["free_extract", "pro_extract", "free_generate", "pro_generate", "usd_inr"];
 function fillSettings() { for (const k of SKEYS) $(`#s_${k}`).value = settings?.[k] ?? ""; }
@@ -203,7 +261,7 @@ async function showTab(t) {
   try {
     if (t === "overview") await loadOverview();
     if (t === "users") await loadUsers();
-    if (t === "usage") await loadUsage();
+    if (t === "usage") await Promise.all([loadUsage(), loadCases(), loadUserCosts()]);
     loaded[t] = true;
   } catch (e) { toast(e.message, true); } finally { busy(false); }
 }
@@ -230,6 +288,8 @@ async function init() {
   $("#userList").addEventListener("click", onUserAction);
   $("#days").addEventListener("change", () => loadUsage().catch((e) => toast(e.message, true)));
   $("#saveSettings").addEventListener("click", saveSettings);
+  $("#moreCases").addEventListener("click", () => loadCases(false).catch((e) => toast(e.message, true)));
+  $("#moreUserCosts").addEventListener("click", () => loadUserCosts(false).catch((e) => toast(e.message, true)));
   showTab("overview");
 }
 

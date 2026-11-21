@@ -6,8 +6,8 @@
   <meta name="robots" content="noindex, nofollow" />
   <title>Admin — Discharge AI</title>
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=7" />
-  <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="admin.css?v=8" />
 </head>
 <body>
   <header class="topbar">
@@ -58,6 +58,19 @@
           </label>
         </div>
         <div class="tbl-wrap"><table class="data" id="dailyTable"></table></div>
+
+        <h3 class="kicker">Cost per discharge — this month</h3>
+        <div class="cards" id="caseCards"></div>
+        <div class="tbl-wrap" style="margin-top:8px"><table class="data" id="modelTable"></table></div>
+        <h3 class="kicker">Recent discharges</h3>
+        <div class="tbl-wrap"><table class="data" id="caseTable"></table></div>
+        <div class="actions tight"><button class="btn" id="moreCases" hidden>Load more</button></div>
+
+        <h3 class="kicker">Cost per user — this month</h3>
+        <p class="hint">Highest cost first. Income is the plan price spread per month (yearly ÷ 12); gifted Pro and Free count as ₹0.</p>
+        <div class="tbl-wrap"><table class="data" id="userCostTable"></table></div>
+        <div class="actions tight"><button class="btn" id="moreUserCosts" hidden>Load more</button></div>
+
         <h3 class="kicker">Recent errors</h3>
         <div id="errors" class="err-list"></div>
       </section>
@@ -81,6 +94,6 @@
   <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Loading…</p></div>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js"></script>
+  <script type="module" src="admin.js?v=8"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=7";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=7";
-import { buildChronology } from "./chrono.js?v=7";
+import { CONFIG } from "./config.js?v=8";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=8";
+import { buildChronology } from "./chrono.js?v=8";
 
 /* ============================================================
    Setup & helpers
@@ -79,6 +79,7 @@ const saveCase = debounce(() => {
   if (!SS) return;
   store.set(SS, CASE_KEY, {
     savedAt: Date.now(),
+    caseId: state.caseId,
     step: state.step === "templates" ? "patient" : state.step,
     patient: state.patient, data: state.data, draft: state.draft, draftTemplate: state.draftTemplate, docHtml: state.docHtml,
   });
@@ -90,6 +91,7 @@ function restoreCase() {
   const ttl = (CONFIG.CASE_TTL_MINUTES || 120) * 60e3;
   if (!c.savedAt || Date.now() - c.savedAt > ttl) { store.del(SS, CASE_KEY); return; } // stale case: wipe
   Object.assign(state.patient, c.patient || {});
+  if (c.caseId) state.caseId = c.caseId;
   for (const k of LEGACY_ID_FIELDS) delete state.patient[k];
   state.data = c.data || null;
   state.draft = c.draft || null;
@@ -800,6 +802,7 @@ async function extract() {
   busy(`Reading ${state.photos.length} photo(s), usually 20–60 seconds`);
   try {
     const r = await api("extract", {
+      case_id: state.caseId || newCaseId(),
       images: state.photos.map((p) => ({ mime: "image/jpeg", data: p.url.split(",")[1], kind: p.kind })),
     });
     state.data = normalise(r.data);
@@ -998,6 +1001,7 @@ async function generate() {
   busy(`Writing the summary (${tpl.name})`);
   try {
     const r = await api("generate", {
+      case_id: state.caseId || newCaseId(),
       case: caseData,
       template,
       options: { outcome: P.outcome || "discharged", followup: P.followup || "", monitor: P.monitor || "", extra: P.extra || "", dept: deptName() },
@@ -1058,12 +1062,20 @@ function setVerified(v) {
   $("#copyBtn").disabled = !v;
 }
 
+// Random id per patient so the admin panel can add up the AI cost of each discharge. No patient data.
+function newCaseId() {
+  state.caseId = crypto.randomUUID ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+  return state.caseId;
+}
+
 function clearCase() {
   const { dept, templateId } = state.patient;
   Object.assign(state, { patient: { outcome: "discharged", dept, templateId }, photos: [], data: null, draft: null, draftTemplate: null, docHtml: null });
   if (SS) store.del(SS, CASE_KEY);
   fillPatientForm(); renderPhotos(); $("#doc").innerHTML = "";
   setVerified(false);
+  state.caseId = null; // next patient gets a fresh id
 }
 
 function newPatient() {

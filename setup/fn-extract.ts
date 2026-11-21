@@ -282,8 +282,10 @@ Deno.serve(async (req: Request) => {
   if (!user) return json({ error: "Please sign in again." }, 401);
   if (!(await termsAccepted(user.id))) return json({ error: "Please accept the Terms of Use to continue.", code: "terms" }, 428);
 
-  let payload: { images?: { mime: string; data: string; kind: string }[] };
+  let payload: { images?: { mime: string; data: string; kind: string }[]; case_id?: string };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
+  // Random per-patient id that links this discharge's AI calls for cost reporting. Contains no patient data.
+  const caseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(payload?.case_id ?? "")) ? String(payload.case_id) : null;
 
   const images = Array.isArray(payload.images) ? payload.images : [];
   if (!images.length) return json({ error: "Add at least one photo." }, 400);
@@ -325,10 +327,10 @@ Deno.serve(async (req: Request) => {
       thinkingBudget: Number(env("EXTRACT_THINKING_BUDGET", "4096")),
       thinkingLevel: env("EXTRACT_THINKING_LEVEL", "high"),
     });
-    await logUsage({ user_id: user.id, kind: "extract", ok: true, model, ...costOf(usage, model) });
+    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, ok: true, model, ...costOf(usage, model) });
     return json({ data: scrub(data), quota: q });
   } catch (e) {
-    await logUsage({ user_id: user.id, kind: "extract", ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
+    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
     await rpc("refund_quota", { p_user: user.id, p_kind: "extract" }).catch(() => {});
     console.error(e);
     return json({ error: "Could not read the photos. Please try again." }, 502);

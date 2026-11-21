@@ -240,8 +240,10 @@ Deno.serve(async (req: Request) => {
   if (!user) return json({ error: "Please sign in again." }, 401);
   if (!(await termsAccepted(user.id))) return json({ error: "Please accept the Terms of Use to continue.", code: "terms" }, 428);
 
-  let payload: { case?: Record<string, unknown>; options?: Record<string, string>; template?: unknown };
+  let payload: { case?: Record<string, unknown>; options?: Record<string, string>; template?: unknown; case_id?: string };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
+  // Random per-patient id that links this discharge's AI calls for cost reporting. Contains no patient data.
+  const caseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(payload?.case_id ?? "")) ? String(payload.case_id) : null;
   const c = payload.case;
   if (!c || typeof c !== "object") return json({ error: "No case data." }, 400);
   const caseText = JSON.stringify(scrub(c));
@@ -304,7 +306,7 @@ Deno.serve(async (req: Request) => {
       thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "1024")),
       thinkingLevel: env("GENERATE_THINKING_LEVEL", "low"),
     });
-    await logUsage({ user_id: user.id, kind: "generate", ok: true, model, ...costOf(usage, model) });
+    await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, ok: true, model, ...costOf(usage, model) });
     const sections: Record<string, string> = {};
     for (const k of Object.keys(properties)) if (k !== "final_diagnosis") sections[k] = scrub(String(data?.[k] ?? "")) as string;
     return json({
@@ -312,7 +314,7 @@ Deno.serve(async (req: Request) => {
       quota: q,
     });
   } catch (e) {
-    await logUsage({ user_id: user.id, kind: "generate", ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
+    await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
     await rpc("refund_quota", { p_user: user.id, p_kind: "generate" }).catch(() => {});
     console.error(e);
     return json({ error: "Could not write the summary. Please try again." }, 502);
