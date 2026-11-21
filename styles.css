@@ -210,6 +210,16 @@ table.edit td.chk input { width: 20px; height: 20px; }
 .confirm input { width: 20px; height: 20px; flex: none; margin-top: 1px; }
 .confirm.verify { border: 1px solid #b9d6d3; }
 
+.timeline { border-left: 2px solid var(--line-2); margin-left: 6px; padding-left: 14px; }
+.tl-day { position: relative; margin-bottom: 12px; font-size: 14px; }
+.tl-day::before { content: ""; position: absolute; left: -20px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-2); }
+.tl-day.before::before { background: var(--faint); }
+.tl-day.trend::before { background: var(--warn-line); }
+.tl-day b { font-size: 13px; color: var(--accent); }
+.tl-day.before b { color: var(--muted); }
+.tl-day ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink); }
+.tl-day li { margin: 2px 0; }
+
 /* ---------- Templates ---------- */
 .onboard { background: var(--accent-soft); border: 1px solid #b9d6d3; border-radius: 12px; padding: 16px; margin-bottom: 18px; }
 .onboard p { margin: 6px 0 0; font-size: 14px; color: var(--muted); }

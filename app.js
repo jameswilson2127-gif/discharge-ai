@@ -1,6 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=4";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=4";
+import { CONFIG } from "./config.js?v=5";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=5";
+import { buildChronology } from "./chrono.js?v=5";
 
 /* ============================================================
    Setup & helpers
@@ -775,7 +776,7 @@ function openLightbox(p, title) {
 }
 
 /* ---------- Extract ---------- */
-const ARR_KEYS = ["known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
+const ARR_KEYS = ["past_events", "known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
 function normalise(d) {
   d = d && typeof d === "object" ? d : {};
   for (const k of ARR_KEYS) if (!Array.isArray(d[k])) d[k] = [];
@@ -822,6 +823,7 @@ async function extract() {
 const SECTIONS = [
   { title: "Patient (from photos)", fields: [
     { k: "age", label: "Age" }, { k: "sex", label: "Sex" },
+    { k: "admission_date", label: "Admission date (orders the timeline)" }, { k: "discharge_date", label: "Discharge date" },
   ] },
   { title: "Diagnosis", fields: [
     { k: "diagnoses", label: "Diagnoses (one per line, most important first)", type: "lines" },
@@ -833,6 +835,9 @@ const SECTIONS = [
     { k: "relevant_negative_history", label: "Relevant negative history", type: "text", span: 2 },
     { k: "past_history_and_medications", label: "Past history & medications", type: "text", span: 2 },
   ] },
+  { title: "Past history (dated)", table: "past_events", note: "Earlier illnesses, admissions, procedures and long-term treatment. Write when it happened (e.g. 2019, 03/2026, 8 years back) so the story starts in the right order.", cols: [
+    { k: "when", label: "When", w: 110 }, { k: "detail", label: "What happened", area: true },
+  ] },
   { title: "On admission", obj: "admission_examination", fields: [
     { k: "general_condition_sensorium", label: "General condition / sensorium", type: "text", span: 2 },
     { k: "bp", label: "BP" }, { k: "pulse", label: "Pulse" }, { k: "rr", label: "RR" },
@@ -841,7 +846,7 @@ const SECTIONS = [
     { k: "cvs", label: "CVS", type: "text" }, { k: "rs", label: "RS", type: "text" },
     { k: "abdomen", label: "Abdomen", type: "text" }, { k: "cns", label: "CNS", type: "text" },
   ] },
-  { title: "Investigations", table: "investigations", cols: [
+  { title: "Investigations", table: "investigations", note: "Keep each report's own date. Reports dated before admission are told as earlier investigations in the story.", cols: [
     { k: "date", label: "Date", w: 90 }, { k: "test", label: "Test" }, { k: "value", label: "Value", w: 90 },
     { k: "unit", label: "Unit", w: 80 }, { k: "flag", label: "H/L", w: 46 },
   ] },
@@ -911,8 +916,29 @@ function renderReview() {
     }
     html += `</div>`;
   }
+  html += `<div class="rv-section"><h3>Timeline (detected from dates)</h3><p class="hint">This is the order the summary will follow. If something is in the wrong place, fix its date above.</p><div id="timeline" class="timeline"></div></div>`;
   $("#reviewForm").innerHTML = html;
+  renderTimeline();
 }
+
+function renderTimeline() {
+  const box = $("#timeline");
+  if (!box || !state.data) return;
+  const c = buildChronology(state.data);
+  if (!c.entries.length && !c.undatedPast.length) { box.innerHTML = `<p class="hint">No dates found yet.</p>`; return; }
+  let html = "", last = "";
+  if (c.undatedPast.length) html += `<div class="tl-day"><b>Background (undated)</b><ul>${c.undatedPast.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>`;
+  const groups = [];
+  for (const e of c.entries) {
+    if (e.label !== last) { groups.push({ label: e.label, phase: e.phase, items: [] }); last = e.label; }
+    groups.at(-1).items.push(e.text);
+  }
+  html += groups.map((g) => `<div class="tl-day ${g.phase}"><b>${esc(g.label)}</b><ul>${g.items.map((t) => `<li>${esc(t.length > 220 ? t.slice(0, 220) + "…" : t)}</li>`).join("")}</ul></div>`).join("");
+  if (c.undated.length) html += `<div class="tl-day"><b>Undated</b><ul>${c.undated.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>`;
+  if (c.trends.length) html += `<div class="tl-day trend"><b>Serial trends</b><ul>${c.trends.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>`;
+  box.innerHTML = html;
+}
+let tlTimer;
 
 function onReviewInput(e) {
   const el = e.target, d = state.data;
@@ -927,6 +953,7 @@ function onReviewInput(e) {
   if (el.type !== "checkbox") el.classList.toggle("unclear", /\[\?\]/.test(el.value));
   state.docHtml = null; // data changed → document should be rebuilt
   saveCase();
+  clearTimeout(tlTimer); tlTimer = setTimeout(renderTimeline, 400);
 }
 
 function onReviewClick(e) {
@@ -953,7 +980,8 @@ async function generate() {
   const P = state.patient;
   const { unclear_items, ...rest } = d;
   // Only the reviewed clinical data goes to the AI. Name and the dates typed on step 1 never leave this device.
-  const caseData = { ...rest, age: d.age || "", sex: d.sex || "", admission_date: d.admission_date || "", discharge_date: d.discharge_date || "" };
+  const caseData = { ...rest, age: d.age || "", sex: d.sex || "", admission_date: d.admission_date || "", discharge_date: d.discharge_date || "",
+    chronology: buildChronology(d).text }; // date-ordered backbone for the story
   const tpl = currentTemplate();
   const template = { title: tpl.title, department: tpl.department, sections: tpl.sections };
   busy(`Writing the summary (${tpl.name})`);

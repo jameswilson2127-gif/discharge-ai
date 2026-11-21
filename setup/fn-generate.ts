@@ -175,6 +175,19 @@ STYLE
 - Separate paragraphs with a blank line.
 - Quote key abnormal values with units, and serial trends where useful (e.g. creatinine fell from 9.67 to 6.12 mg/dL).
 
+STORY ORDER (CHRONOLOGY)
+- The case data includes CHRONOLOGY: a timeline built automatically from the written dates (background, reports before admission, then Day 1, Day 2…), plus SERIAL TRENDS of repeated tests. Treat it as the backbone of the narrative and keep its order. Never move a dated event or result to a different day.
+- Narrative sections must read as one continuous clinical story from beginning to end:
+  1) background — comorbidities with duration and treatment, earlier illnesses, previous hospitalisations and procedures (from past_events, oldest first);
+  2) earlier investigations done before this admission, with their dates and findings, and how they relate to the current illness;
+  3) the presenting illness in time order, leading up to admission;
+  4) admission findings and the initial investigations;
+  5) the diagnosis;
+  6) the day-by-day hospital course, mentioning each investigation result on the day it came, with trends compared with earlier values (including pre-admission values);
+  7) the end of the stay per OUTCOME.
+- Link events with natural time phrases ("Eight years ago…", "In March 2026…", "Two days before admission…", "On day 3…", "Subsequently…").
+- If the template splits these into separate sections, keep each section's content in chronological order. Undated items go where they fit best, without inventing a date.
+
 HOSPITAL COURSE (most important part — must be DETAILED)
 - Wherever the template describes the course in hospital (a "Hospital Course" section, or the course part of a "Clinical Summary"/"Case Summary"), write a full chronological account. Use the template's opening and closing phrases, but do NOT shorten the course to match the template's length.
 - Cover EVERY dated progress note and event in date order, using dates ("On 12/11/2026…", "On day 3 of admission…") or clearly grouped phases for long stays. For each day or phase include, where documented: clinical status and symptoms; vitals with values and their trend; oxygen/ventilatory support; examination changes; investigations reported, with values and serial trends; treatment started, stopped or modified, naming the drugs (doses where clinically relevant: antibiotics, steroids, insulin, inotropes, anticoagulants, diuretics); fluids, transfusions and procedures; specialist consultations and their advice; complications and how they were managed.

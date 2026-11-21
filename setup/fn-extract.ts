@@ -159,10 +159,12 @@ STRICT RULES
 4. Dates as DD/MM/YYYY when the year is known, otherwise as written.
 5. PRIVACY: Do NOT transcribe any identifier anywhere: the patient's name, relatives'/attendants' names, address, phone number, e-mail, UHID, IPD/CR/MRD/registration number, bed or ward number, Aadhaar, ABHA, PM-JAY/insurance ID, or photographs of faces. Ignore them even if clearly visible. Age and sex are allowed. Refer to the person only as "the patient".
 6. Medications: one row per distinct drug order. If a dose was changed, make a separate row for each regimen with dates in "dates". Put the dosage form in "form" (INJ, TAB, CAP, SYP, NEB, INH, IVF, OINT, DROPS, SACHET, other). "on_discharge" is true only if the drug clearly appears in a discharge/advice-on-discharge list or the last day's orders of an improving patient explicitly marked for discharge; otherwise false.
-7. Investigations: one row per test result with its date. Put abnormal flag "H" or "L" only if printed or obvious from the printed reference range; otherwise "".
+7. Investigations: one row per test result with its date. Include reports from BEFORE this admission (outside/referral/previous reports, old discharge cards) with their own report dates — never re-date them to the admission. Put abnormal flag "H" or "L" only if printed or obvious from the printed reference range; otherwise "".
 8. Daily progress: one row per dated note (if a day has several notes, e.g. morning/evening/night, keep them in that day's row in time order). Transcribe faithfully and in DETAIL, keeping every number. Cover whatever is written of: complaints/symptoms; vitals (BP, PR, RR, SpO2 with O2 support, temperature, GCS, RBS); intake/output and urine output; examination findings by system; investigations reported or reviewed that day with values; treatment changes (drugs started, stopped or dose changed, by name; fluids, oxygen, transfusions); procedures; specialist opinions and their advice; the plan. Usually 3–8 sentences per day. Do not shorten to a vague summary such as "patient stable".
 9. Events: significant events (procedures, dialysis, intubation, transfusion, arrest/CPR, specialist consults, complications) with date and time if written.
-10. If a photo is unreadable or irrelevant, mention it in "unclear_items".`;
+10. Past history: fill "past_events" with every earlier illness, diagnosis, hospitalisation, procedure and long-term treatment, keeping when it happened as written. Durations such as "k/c/o T2DM x 8 yrs" go here too ("8 years back"). Convert relative times only if the note gives the reference date.
+11. Dates matter: copy every date written on notes, reports and charts so events can be placed in order.
+12. If a photo is unreadable or irrelevant, mention it in "unclear_items".`;
 
 const S = { type: "STRING" };
 const SCHEMA = {
@@ -172,9 +174,14 @@ const SCHEMA = {
     admission_date: S, discharge_date: S,
     known_case_of: { type: "ARRAY", items: S, description: "Pre-existing comorbidities / habits (e.g. T2DM, HTN, alcohol use, smoker)" },
     chief_complaints: { type: "ARRAY", items: S, description: "Each with duration, e.g. 'Fever x 4 days'" },
-    history_of_present_illness: S,
+    history_of_present_illness: { type: "STRING", description: "Detailed, in time order, with durations and sequence of symptoms exactly as written" },
     relevant_negative_history: S,
     past_history_and_medications: S,
+    past_events: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { when: S, detail: S }, required: ["detail"] },
+      description: "Past illnesses, earlier diagnoses, previous hospitalisations, surgeries/procedures and long-term treatment, each with when it happened as written (date, month/year, year, or 'x years back')",
+    },
     admission_examination: {
       type: "OBJECT",
       properties: {
