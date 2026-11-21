@@ -123,7 +123,7 @@ async function callGemini(opts: {
     systemInstruction: { parts: [{ text: opts.system }] },
     contents: [{ role: "user", parts: opts.parts }],
     generationConfig: {
-      temperature: 0.1,
+      ...(/^gemini-3/.test(model) ? {} : { temperature: 0.1 }), // Gemini 3: keep default temperature (low values can loop)
       responseMimeType: "application/json",
       responseSchema: opts.schema,
       maxOutputTokens: opts.maxTokens,
@@ -142,14 +142,27 @@ async function callGemini(opts: {
       const text = (cand?.content?.parts ?? [])
         .filter((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
         .map((p: { text: string }) => p.text).join("");
-      if (!text) throw Object.assign(new Error(`Empty AI response (${cand?.finishReason ?? "no candidate"})`), { model, usage: data.usageMetadata });
-      return { data: safeParse(text), usage: data.usageMetadata ?? null, model };
+      const finish = cand?.finishReason ?? "no candidate";
+      const outTok = data?.usageMetadata?.candidatesTokenCount ?? "?";
+      const thinkTok = data?.usageMetadata?.thoughtsTokenCount ?? 0;
+      if (!text) {
+        last = `Empty AI response (${finish})`;
+      } else {
+        try {
+          return { data: JSON.parse(text), usage: data.usageMetadata ?? null, model };
+        } catch {
+          // Never log the text itself (it may contain patient details) — only why it failed.
+          last = `AI returned malformed JSON (finish: ${finish}, output ${outTok} tok, thinking ${thinkTok} tok, model ${model})`;
+        }
+      }
+      if (attempt === 0) continue; // one retry for truncated / looping output
+      throw Object.assign(new Error(last), { model, usage: data.usageMetadata });
     }
     last = `${r.status} ${await r.text()}`;
     if (r.status !== 429 && r.status < 500) break;
     await new Promise((s) => setTimeout(s, 1500));
   }
-  throw Object.assign(new Error(`Gemini error: ${last.slice(0, 200)}`), { model });
+  throw Object.assign(new Error(last.startsWith("AI returned") || last.startsWith("Empty") ? last : `Gemini error: ${last.slice(0, 200)}`), { model });
 }
 
 // ---------- Prompt + schema ----------
