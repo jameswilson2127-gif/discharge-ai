@@ -1,7 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=8";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=8";
-import { buildChronology } from "./chrono.js?v=8";
+import { CONFIG } from "./config.js?v=9";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=9";
+import { buildChronology } from "./chrono.js?v=9";
+import { labPanel, consistencyIssues } from "./checks.js?v=9";
 
 /* ============================================================
    Setup & helpers
@@ -578,7 +579,7 @@ function showStep(step, { keepEditor = false } = {}) {
   });
   if (step === "templates" && !keepEditor) renderTemplateList();
   if (step === "review") renderReview();
-  if (step === "final") renderDocIfNeeded();
+  if (step === "final") { renderDocIfNeeded(); renderRxChecks(); }
   saveCase();
   window.scrollTo({ top: 0 });
 }
@@ -780,7 +781,7 @@ function openLightbox(p, title) {
 }
 
 /* ---------- Extract ---------- */
-const ARR_KEYS = ["past_events", "held_drugs", "pending_investigations", "known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
+const ARR_KEYS = ["allergies", "past_events", "held_drugs", "pending_investigations", "known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
 function normalise(d) {
   d = d && typeof d === "object" ? d : {};
   for (const k of ARR_KEYS) if (!Array.isArray(d[k])) d[k] = [];
@@ -870,6 +871,9 @@ const SECTIONS = [
     { k: "route", label: "Route", w: 60 }, { k: "frequency", label: "Freq", w: 70 },
     { k: "dates", label: "Dates / duration", w: 120 }, { k: "on_discharge", label: "On discharge", bool: true, w: 70 },
   ] },
+  { title: "Allergies & drugs to avoid (documented)", table: "allergies", note: "Only what is written in the file or what you add. Used to check the discharge list.", cols: [
+    { k: "drug", label: "Drug / class", w: 160 }, { k: "reaction", label: "Reaction / reason", area: true },
+  ] },
   { title: "Drugs on hold", table: "held_drugs", cols: [
     { k: "drug", label: "Drug", w: 160 }, { k: "reason", label: "Reason / until", area: true },
   ] },
@@ -933,6 +937,51 @@ function renderReview() {
   html += `<div class="rv-section"><h3>Timeline (detected from dates)</h3><p class="hint">This is the order the summary will follow. If something is in the wrong place, fix its date above.</p><div id="timeline" class="timeline"></div></div>`;
   $("#reviewForm").innerHTML = html;
   renderTimeline();
+  renderRxChecks();
+}
+/* ---------- Prescribing aids: lab panel + consistency check (code only, no AI, no advice) ---------- */
+function rxChecksHtml(where) {
+  const d = state.data;
+  if (!d) return "";
+  const p = labPanel(d);
+  const { issues, checked } = consistencyIssues(d);
+  const dismissed = new Set(d._dismissed || []);
+  const open = issues.filter((i) => !dismissed.has(i.id));
+  const kept = issues.length - open.length;
+  const chip = (x) => `<span class="lab ${x.flag ? "ab" : ""}"><b>${esc(x.label)}</b> ${esc(x.value)}${x.flag ? ` <i>${x.flag}</i>` : ""}${x.trend ? ` <small>${esc(x.trend)}</small>` : ""}${x.date ? ` <small>(${esc(x.date)})</small>` : ""}</span>`;
+
+  let html = `<div class="rx-box">
+    <div class="rx-head"><b>Before you finalise the discharge drugs</b><span class="rx-tag">Hints only — not a complete safety check</span></div>
+    <div class="rx-sub">Latest results in this file</div>
+    <div class="labs">${p.abnormal.length ? p.abnormal.map(chip).join("") : `<span class="hint" style="margin:0">No abnormal values among the prescribing-relevant tests found.</span>`}</div>`;
+  if (p.normal.length) html += `<details class="rx-more"><summary>Within range (${p.normal.length})</summary><div class="labs">${p.normal.map(chip).join("")}</div></details>`;
+  if (p.missing.length) html += `<p class="rx-missing">Not found in file: ${p.missing.map(esc).join(", ")}</p>`;
+  if (p.allergies.length) html += `<p class="rx-allergy"><b>Documented allergies / avoid:</b> ${p.allergies.map(esc).join("; ")}</p>`;
+
+  html += `<div class="rx-sub">Discharge list vs case file</div>`;
+  if (!checked) html += `<p class="hint" style="margin:0">No drugs are ticked "On discharge" yet.</p>`;
+  else if (!open.length) html += `<p class="rx-ok">No mismatches with the case file${kept ? ` (${kept} marked intentional)` : ""}. This does not check doses, interactions or suitability.</p>`;
+  else html += open.map((i) => `<div class="rx-issue ${i.level}">
+      <div>${esc(i.text)}</div>
+      <div class="rx-act"><button class="btn small" data-rx="fix">${where === "final" ? "Edit in Review" : "Go to medications"}</button>
+      <button class="btn small" data-rx="keep" data-id="${esc(i.id)}">Keep, intentional</button></div></div>`).join("");
+  return html + `</div>`;
+}
+function renderRxChecks() {
+  const r = $("#rxReview"), f = $("#rxFinal");
+  if (r && state.step === "review") r.innerHTML = rxChecksHtml("review");
+  if (f && state.step === "final") f.innerHTML = rxChecksHtml("final");
+}
+function onRxClick(e) {
+  const b = e.target.closest("[data-rx]");
+  if (!b || !state.data) return;
+  if (b.dataset.rx === "keep") {
+    state.data._dismissed = [...new Set([...(state.data._dismissed || []), b.dataset.id])];
+    saveCase(); renderRxChecks();
+  } else {
+    if (state.step !== "review") showStep("review");
+    setTimeout(() => $('[data-add="medications"]')?.closest(".rv-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
 }
 
 function renderTimeline() {
@@ -967,14 +1016,16 @@ function onReviewInput(e) {
   if (el.type !== "checkbox") el.classList.toggle("unclear", /\[\?\]/.test(el.value));
   state.docHtml = null; // data changed → document should be rebuilt
   saveCase();
-  clearTimeout(tlTimer); tlTimer = setTimeout(renderTimeline, 400);
+  clearTimeout(tlTimer); tlTimer = setTimeout(() => { renderTimeline(); renderRxChecks(); }, 400);
 }
 
 function onReviewClick(e) {
   const t = e.target;
   if (t.dataset.add) {
     const sec = SECTIONS.find((s) => s.table === t.dataset.add);
-    state.data[t.dataset.add].push(Object.fromEntries(sec.cols.map((c) => [c.k, c.bool ? false : ""])));
+    const row = Object.fromEntries(sec.cols.map((c) => [c.k, c.bool ? false : ""]));
+    if (t.dataset.add === "medications") row._manual = true; // typed by hand, not read from photos
+    state.data[t.dataset.add].push(row);
     renderReview(); saveCase();
   } else if (t.dataset.del) {
     state.data[t.dataset.del].splice(+t.dataset.row, 1);
@@ -992,8 +1043,9 @@ async function generate() {
   }
   if (state.docHtml && !confirm("Rewriting will replace your edits in the summary. Continue?")) return;
   const P = state.patient;
-  const { unclear_items, ...rest } = d;
+  const { unclear_items, _dismissed, ...rest } = d; // "_" fields are app-only, never sent to the AI
   // Only the reviewed clinical data goes to the AI. Name and the dates typed on step 1 never leave this device.
+  rest.medications = (rest.medications || []).map(({ _manual, ...m }) => m);
   const caseData = { ...rest, age: d.age || "", sex: d.sex || "", admission_date: d.admission_date || "", discharge_date: d.discharge_date || "",
     chronology: buildChronology(d).text }; // date-ordered backbone for the story
   const tpl = currentTemplate();
@@ -1159,6 +1211,8 @@ function bind() {
   $("#optTreatment").addEventListener("change", () => { updateDocWarn(); onDocEdit(); });
   $("#regenBtn").addEventListener("click", generate);
   $("#finalVerify").addEventListener("change", (e) => setVerified(e.target.checked));
+  $("#rxReview").addEventListener("click", onRxClick);
+  $("#rxFinal").addEventListener("click", onRxClick);
   $("#copyBtn").addEventListener("click", async () => {
     if (!$("#finalVerify").checked) return;
     try { await navigator.clipboard.writeText($("#doc").innerText); toast("Copied."); }

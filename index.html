@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=9" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -196,6 +196,7 @@
       <p class="hint">Compare with the photos (tap a thumbnail to zoom). Yellow means an unclear reading. Only what you keep here is used.</p>
       <div id="thumbStrip" class="thumb-strip"></div>
       <div id="reviewForm"></div>
+      <div id="rxReview"></div>
       <label class="confirm"><input type="checkbox" id="medConfirm" /> I have checked every drug, dose and frequency against the treatment chart.</label>
       <div class="actions">
         <button class="btn" data-go="photos">← Photos</button>
@@ -209,6 +210,7 @@
         <div id="docWarn" class="doc-warn" hidden></div>
         <p class="hint">Tap anywhere in the summary to edit it. Highlighted <mark>___</mark> and <mark>[?]</mark> need your attention.</p>
         <label class="inline" id="optTreatmentLabel"><input type="checkbox" id="optTreatment" /> Include the "Treatment given" list</label>
+        <div id="rxFinal"></div>
         <label class="confirm verify"><input type="checkbox" id="finalVerify" /> I have read this draft in full against the case file, corrected it, and take responsibility for it as the treating doctor.</label>
         <div class="actions tight">
           <button class="btn" data-go="review">← Review</button>
@@ -307,6 +309,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=8"></script>
+  <script type="module" src="app.js?v=9"></script>
 </body>
 </html>

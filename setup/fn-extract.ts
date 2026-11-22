@@ -193,6 +193,7 @@ STRICT RULES
 9. Events: significant events (procedures, dialysis, intubation, transfusion, arrest/CPR, specialist consults, complications) with date and time if written.
 10. Past history: fill "past_events" with every earlier illness, diagnosis, hospitalisation, procedure and long-term treatment, keeping when it happened as written. Durations such as "k/c/o T2DM x 8 yrs" go here too ("8 years back"). Convert relative times only if the note gives the reference date.
 11. Discharge plan: drugs withheld/on hold → "held_drugs"; tests sent or planned whose results are awaited → "pending_investigations"; follow-up instructions (OPD, unit, timing) → "follow_up_plan".
+12a. Allergies: copy every documented drug allergy and every written instruction to avoid a drug or drug class ("Avoid NSAIDs", "Allergic to sulfa") into "allergies". "NKDA"/"no known drug allergy" → leave empty.
 12. "department": the treating department written on the sheets (e.g. "Medical Oncology"), not the department printed on a borrowed form.
 13. Dates matter: copy every date written on notes, reports and charts so events can be placed in order.
 14. If a photo is unreadable or irrelevant, mention it in "unclear_items".`;
@@ -253,6 +254,11 @@ const SCHEMA = {
         },
         required: ["drug"],
       },
+    },
+    allergies: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { drug: S, reaction: S }, required: ["drug"] },
+      description: "Documented drug allergies AND documented 'avoid X' instructions (drug or class), with the reaction/reason if written",
     },
     held_drugs: {
       type: "ARRAY",

@@ -220,6 +220,25 @@ table.edit td.chk input { width: 20px; height: 20px; }
 .tl-day ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink); }
 .tl-day li { margin: 2px 0; }
 
+.rx-box { border: 1px solid var(--line-2); border-radius: 12px; padding: 14px; margin-top: 16px; background: #fbfcfb; }
+.rx-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; }
+.rx-tag { font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--line); padding: 2px 8px; border-radius: 99px; }
+.rx-sub { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); font-weight: 700; margin: 14px 0 6px; }
+.labs { display: flex; flex-wrap: wrap; gap: 6px; }
+.lab { font-size: 13px; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.lab.ab { border-color: var(--warn-line); background: var(--warn-bg); }
+.lab i { font-style: normal; font-weight: 700; color: var(--danger); }
+.lab small { color: var(--muted); }
+.rx-more { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.rx-more .labs { margin-top: 6px; }
+.rx-missing { font-size: 13px; color: var(--danger); margin: 8px 0 0; }
+.rx-allergy { font-size: 13.5px; margin: 8px 0 0; }
+.rx-ok { font-size: 13.5px; color: #1b7a43; margin: 0; }
+.rx-issue { border: 1px solid var(--line); border-left: 4px solid var(--faint); border-radius: 10px; background: #fff; padding: 10px 12px; margin-top: 8px; font-size: 14px; }
+.rx-issue.high { border-left-color: var(--danger); background: #fff6f5; }
+.rx-issue.check { border-left-color: var(--warn-line); }
+.rx-act { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
 /* ---------- Templates ---------- */
 .onboard { background: var(--accent-soft); border: 1px solid #b9d6d3; border-radius: 12px; padding: 16px; margin-bottom: 18px; }
 .onboard p { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
