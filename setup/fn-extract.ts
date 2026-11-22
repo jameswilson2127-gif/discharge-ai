@@ -179,9 +179,9 @@ async function callGemini(opts: {
 // ---------- Prompt + schema ----------
 // Appended to SYSTEM according to the summary length the doctor chose.
 const DETAIL_RULES: Record<string, string> = {
-  concise: `\n\nDETAIL LEVEL: CONCISE. Daily progress: 2–3 sentences per day, focused on what changed (new symptoms, abnormal vitals, results, treatment started/stopped/changed, procedures, consults, complications). Keep every number you mention. Specialised results: the key finding and main values only. All other fields as usual — never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
-  standard: `\n\nDETAIL LEVEL: STANDARD. Daily progress: 3–5 sentences per day covering status, key vitals, results, treatment changes, procedures, consults and plan. Specialised results: main findings with their values. Never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
-  detailed: `\n\nDETAIL LEVEL: DETAILED. Daily progress: 3–8 sentences per day, transcribing everything written with every number. Specialised results in full (every marker, every value).`,
+  concise: `\n\nDETAIL LEVEL: CONCISE. case_story: about 150–300 words. Daily progress: 2–3 sentences per day, focused on what changed (new symptoms, abnormal vitals, results, treatment started/stopped/changed, procedures, consults, complications). Keep every number you mention. Specialised results: the key finding and main values only. All other fields as usual — never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
+  standard: `\n\nDETAIL LEVEL: STANDARD. case_story: about 250–500 words. Daily progress: 3–5 sentences per day covering status, key vitals, results, treatment changes, procedures, consults and plan. Specialised results: main findings with their values. Never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
+  detailed: `\n\nDETAIL LEVEL: DETAILED. case_story: as long as needed to hold every fact (often 400–900 words). Daily progress: 3–8 sentences per day, transcribing everything written with every number. Specialised results in full (every marker, every value).`,
 };
 
 const SYSTEM = `You are a meticulous medical records transcriber in an Indian government teaching hospital (Department of General Medicine).
@@ -199,20 +199,25 @@ HOW INDIAN WARD NOTES ARE WRITTEN (read them this way)
 - Crossed-out text is a correction: ignore it, unless the same content appears un-crossed elsewhere.
 - Lab shorthand: "CBC 10.8/6.78/174K" = Hb/TLC/platelets; "RFT 11/0.55" = urea/creatinine; "LFT 0.46/0.20 24/15/105 7.1/4.51/2.6" = T.bil/D.bil, SGOT/SGPT/ALP, total protein/albumin/globulin; "SE" serum electrolytes. Split these into separate investigation rows with the right test names.
 
+DATES OF EVENTS vs DATE OF THE NOTE
+- The date written at the top of a note is when the note was written. The history recorded inside it can be months or years older (e.g. a note dated 26/10/2026 may recount "Oct 2024 → swelling of face"). Give every event the date written next to IT; never stamp old history with the note's date.
+- Flow-chart histories (arrows, boxes, braces, timelines drawn across the page) are read in the order of the arrows, start to end.
+
 STRICT RULES
+0. "case_story" FIRST: before filling other fields, write case_story — a faithful, complete transcription in prose of the whole case IN DATE ORDER: the original illness and every past treatment line (regimen names, number of cycles with dates, surgeries with dates, radiotherapy), every relapse/progression and its investigations (PET-CT, biopsy, marrow, with findings and values), complications and how they were treated, and then this admission day by day (complaints, vitals, results, every drug with dose/route/frequency/duration, procedures, consults), ending with the discharge orders. Use only what is written; keep every date, number, dose and drug name exactly; keep route/form exactly (eye drops/eye ointment are NOT oral drugs). Mark unclear readings with [?]. Length per DETAIL LEVEL, but never omit a dated event, a drug or a result.
 1. Never invent, infer or "correct" values. If something is not written, leave the field empty.
 2. If a word, number, drug name or dose is hard to read, write your best reading followed by " [?]" AND add an entry to "unclear_items". Doses, drug names, dates and lab values matter most.
 3. Keep standard medical abbreviations as written (TDS, BD, OD, HS, SOS, STAT, IV, IM, PO, Inj, Tab, Neb, s/p, k/c/o, etc.). Indian brand names are fine (e.g. Levera, Pantop, Emset, Duolin, Budecort).
 4. Dates as DD/MM/YYYY when the year is known, otherwise as written.
 5. PRIVACY: Do NOT transcribe any identifier anywhere: the patient's name, relatives'/attendants' names, address, phone number, e-mail, UHID, IPD/CR/MRD/registration number, bed or ward number, Aadhaar, ABHA, PM-JAY/insurance ID, or photographs of faces. Ignore them even if clearly visible. Age and sex are allowed. Refer to the person only as "the patient".
-6. Medications: one row per distinct drug order, including additives (e.g. "KCl 10 mEq/L in RL"). If a dose was changed, make a separate row for each regimen with dates in "dates". Put the dosage form in "form" (INJ, TAB, CAP, SYP, NEB, INH, IVF, OINT, DROPS, SACHET, other). "on_discharge" is true if the drug appears in a discharge/advice list, OR in the "Adv"/"c/w" orders of the LAST dated note of a patient who is improving or being discharged; false for drugs that were withheld or stopped, and for one-time (STAT) doses.
+6. Medications: one row per distinct drug order, including additives (e.g. "KCl 10 mEq/L in RL"). If a dose was changed, make a separate row for each regimen with dates in "dates". Put the dosage form in "form" (INJ, TAB, CAP, SYP, NEB, INH, IVF, OINT, DROPS, SACHET, other). "on_discharge" is true if the drug appears in a discharge/advice list, OR in the "Adv"/"Ad"/"c/w" orders of the LAST dated note(s) of a patient who is improving, sent home or reviewed in OPD, OR it is a course prescribed for a fixed duration ("x 5 days", "for 2 days", "SOS") that continues after discharge, OR it is an eye/ear drop or local treatment advised by a specialist to continue; false for drugs that were withheld or stopped, for chemotherapy given in hospital, and for one-time (STAT) doses. When a drug is crossed out and rewritten (e.g. "150" crossed, "160" written), use the un-crossed value.
 7. Investigations: one row per numeric test result with its date and unit if written; add the conventional unit only when the test has one standard unit (Hb g/dL; urea, creatinine, bilirubin mg/dL; Na, K, Cl mmol/L; SGOT, SGPT, ALP U/L; total protein, albumin, globulin g/dL; ESR mm/hr; TLC and platelets ×10³/µL when written with "K"). Specialised or descriptive results — bone marrow, flow cytometry (list EVERY marker and whether positive/negative), serum free light chains with ratio, SPEP/immunofixation, MRD, PET-CT, CT/MRI/USG, biopsy, cultures, echo — go in "imaging_and_other_tests" with their own dates and the full finding. Include reports from BEFORE this admission (outside/referral/previous reports, old discharge cards) with their own report dates — never re-date them to the admission. Put abnormal flag "H" or "L" only if printed or obvious from the printed reference range; otherwise "".
 8. Daily progress: one row per dated note (if a day has several notes, e.g. morning/evening/night, keep them in that day's row in time order). Transcribe faithfully and in DETAIL, keeping every number. Cover whatever is written of: complaints/symptoms; vitals (BP, PR, RR, SpO2 with O2 support, temperature, GCS, RBS); intake/output and urine output; examination findings by system; investigations reported or reviewed that day with values; treatment changes (drugs started, stopped or dose changed, by name; fluids, oxygen, transfusions); procedures; specialist opinions and their advice; the plan. Length per day: see DETAIL LEVEL at the end. Do not shorten to a vague summary such as "patient stable".
 9. Events: significant events (procedures, dialysis, intubation, transfusion, arrest/CPR, specialist consults, complications) with date and time if written.
 10. Past history: fill "past_events" with every earlier illness, diagnosis, hospitalisation, procedure and long-term treatment, keeping when it happened as written. Durations such as "k/c/o T2DM x 8 yrs" go here too ("8 years back"). Convert relative times only if the note gives the reference date.
 11. Discharge plan: drugs withheld/on hold → "held_drugs"; tests sent or planned whose results are awaited → "pending_investigations"; follow-up instructions (OPD, unit, timing) → "follow_up_plan".
 12a. Allergies: copy every documented drug allergy and every written instruction to avoid a drug or drug class ("Avoid NSAIDs", "Allergic to sulfa") into "allergies". "NKDA"/"no known drug allergy" → leave empty.
-12. "department": the treating department written on the sheets (e.g. "Medical Oncology"), not the department printed on a borrowed form.
+12. "department": the treating department written or printed on the patient's own sheets, OPD card or resident's stamp (e.g. "Medical Oncology and Hematology"), not the department printed on a borrowed blank form (e.g. a "Department of Nephrology" investigation sheet used by another unit).
 13. Dates matter: copy every date written on notes, reports and charts so events can be placed in order.
 14. If a photo is unreadable or irrelevant, mention it in "unclear_items".`;
 
@@ -220,6 +225,7 @@ const S = { type: "STRING" };
 const SCHEMA = {
   type: "OBJECT",
   properties: {
+    case_story: { type: "STRING", description: "Complete chronological transcription of the whole case in prose — see rule 0. Write this first." },
     age: S, sex: { type: "STRING", description: "Male, Female or empty" },
     admission_date: S, discharge_date: S, department: S,
     known_case_of: { type: "ARRAY", items: S, description: "Pre-existing comorbidities / habits (e.g. T2DM, HTN, alcohol use, smoker)" },
@@ -294,7 +300,7 @@ const SCHEMA = {
       items: { type: "OBJECT", properties: { where: S, reading: S, reason: S }, required: ["where", "reason"] },
     },
   },
-  required: ["diagnoses", "medications", "investigations", "daily_progress", "unclear_items"],
+  required: ["case_story", "diagnoses", "medications", "investigations", "daily_progress", "unclear_items"],
 };
 
 // ---------- Handler ----------

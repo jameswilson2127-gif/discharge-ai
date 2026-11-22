@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=10";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=10";
-import { buildChronology } from "./chrono.js?v=10";
-import { labPanel, consistencyIssues } from "./checks.js?v=10";
+import { CONFIG } from "./config.js?v=12";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=12";
+import { buildChronology } from "./chrono.js?v=12";
+import { labPanel, consistencyIssues } from "./checks.js?v=12";
 
 /* ============================================================
    Setup & helpers
@@ -688,6 +688,7 @@ function renderPhotos() {
         <select data-act="kind">${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${k === p.kind ? "selected" : ""}>${i + 1}. ${l}</option>`).join("")}</select>
       </div>
       <div class="row">
+        <button class="btn small" data-act="rotate" aria-label="Rotate 90°" title="Rotate so the writing is upright">⟳</button>
         <button class="btn small" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move earlier">◀</button>
         <button class="btn small" data-act="down" ${i === state.photos.length - 1 ? "disabled" : ""} aria-label="Move later">▶</button>
         <button class="btn small danger" data-act="del" aria-label="Remove">✕</button>
@@ -706,10 +707,23 @@ function onPhotoAction(e) {
   if (e.type !== "click") return;
   if (act === "view") openLightbox(p, `Photo ${i + 1} · ${KIND_LABEL[p.kind]}`);
   if (act === "mask") openMask(p, renderPhotos);
+  if (act === "rotate") rotatePhoto(p).then(renderPhotos);
   if (act === "clean") { p.clean = !p.clean; renderPhotos(); }
   if (act === "del") { state.photos.splice(i, 1); renderPhotos(); }
   if (act === "up" && i > 0) { [state.photos[i - 1], state.photos[i]] = [state.photos[i], state.photos[i - 1]]; renderPhotos(); }
   if (act === "down" && i < state.photos.length - 1) { [state.photos[i + 1], state.photos[i]] = [state.photos[i], state.photos[i + 1]]; renderPhotos(); }
+}
+
+// Rotate a photo 90° clockwise so the AI reads the writing upright (sideways pages are read much worse).
+async function rotatePhoto(p) {
+  const img = await loadImage(p.url);
+  const c = document.createElement("canvas");
+  c.width = img.naturalHeight; c.height = img.naturalWidth;
+  const ctx = c.getContext("2d");
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(Math.PI / 2);
+  ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  p.url = c.toDataURL("image/jpeg", 0.8);
 }
 
 /* ---------- Masking tool ---------- */
@@ -839,6 +853,9 @@ async function extract() {
    Step 3 — review
    ============================================================ */
 const SECTIONS = [
+  { title: "Case story (read from the photos)", note: "The whole case in date order, as read from the photos. The summary is written mainly from this, so check dates, cycles, drugs and doses here.", fields: [
+    { k: "case_story", label: "Case story", type: "text", span: 2, rows: 14 },
+  ] },
   { title: "Patient (from photos)", fields: [
     { k: "age", label: "Age" }, { k: "sex", label: "Sex" },
     { k: "admission_date", label: "Admission date (orders the timeline)" }, { k: "discharge_date", label: "Discharge date" },
@@ -1055,6 +1072,8 @@ async function generate() {
   }
   if (state.docHtml && !confirm("Rewriting will replace your edits in the summary. Continue?")) return;
   const P = state.patient;
+  if ((P.outcome || "discharged") === "discharged" && !d.medications.some((m) => m.on_discharge)
+    && !confirm('No drugs are ticked "On discharge", so the discharge medication list will be empty. Write the summary anyway?')) return;
   const { unclear_items, _dismissed, ...rest } = d; // "_" fields are app-only, never sent to the AI
   // Only the reviewed clinical data goes to the AI. Name and the dates typed on step 1 never leave this device.
   rest.medications = (rest.medications || []).map(({ _manual, ...m }) => m);
@@ -1093,14 +1112,27 @@ function updateDocWarn() {
   $("#optTreatmentLabel").hidden = !opt.length;
   opt.forEach((el) => (el.hidden = !$("#optTreatment").checked));
   const n = (doc.innerText.match(/_{3,}|\[\?\]/g) || []).length;
+  const u = $$("mark.unv", doc).length;
   const w = $("#docWarn");
-  w.hidden = !n;
-  w.textContent = n ? `${n} blank(s) or unclear item(s) still highlighted. Fill or remove them before printing.` : "";
+  w.hidden = !n && !u;
+  w.textContent = [
+    u ? `${u} date(s)/number(s) not found in your reviewed data are highlighted in orange — check each against the case file.` : "",
+    n ? `${n} blank(s) or unclear item(s) still highlighted. Fill or remove them before printing.` : "",
+  ].filter(Boolean).join(" ");
+}
+
+// Everything the AI was allowed to use: reviewed data, step-1 details and the template's own fixed wording.
+function factSourceText() {
+  const P = state.patient;
+  const tpl = state.draftTemplate || currentTemplate();
+  return [JSON.stringify(state.data || {}), P.doa, P.dod, P.followup, P.monitor, P.extra,
+    (tpl.sections || []).map((s) => s.guidance).join(" ")].join(" ");
 }
 
 function renderDocIfNeeded(force = false) {
   const doc = $("#doc");
   if (!state.draft) return;
+  setFactSource(factSourceText());
   doc.innerHTML = !force && state.docHtml
     ? state.docHtml
     : buildDoc({ ...state.patient, dept: deptName(), age: state.data?.age || "", sex: state.data?.sex || "" }, state.data, state.draft, state.draftTemplate || currentTemplate());

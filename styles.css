@@ -304,6 +304,7 @@ table.edit td.chk input { width: 20px; height: 20px; }
 .doc .sign { display: flex; justify-content: space-between; margin-top: 40px; font-size: 10.5pt; }
 .doc .sign div { border-top: 1px solid #555; padding-top: 4px; min-width: 28%; text-align: center; }
 mark { background: var(--warn-bg); padding: 0 2px; }
+.doc mark.unv { background: #ffe1c4; border-bottom: 1.5px dashed #d9730d; cursor: help; }
 
 /* ---------- Overlays ---------- */
 .busy { position: fixed; inset: 0; z-index: 50; background: rgba(245,247,246,.92); display: grid; place-content: center; text-align: center; gap: 12px; }
@@ -366,7 +367,7 @@ mark { background: var(--warn-bg); padding: 0 2px; }
   .app { max-width: none; padding: 0; }
   .step { border: none; padding: 0; background: none; box-shadow: none; }
   .doc { box-shadow: none; border: none; padding: 0; max-width: none; font-size: 11pt; }
-  mark { background: none; }
+  mark, .doc mark.unv { background: none; border: none; }
   .doc h2 { break-after: avoid; }
   .doc ol li, .doc p { break-inside: avoid-page; }
 }

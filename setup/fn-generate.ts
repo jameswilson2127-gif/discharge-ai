@@ -210,6 +210,11 @@ STYLE
 - Separate paragraphs with a blank line.
 - Quote key abnormal values with units, and serial trends where useful (e.g. creatinine fell from 9.67 to 6.12 mg/dL).
 
+SOURCES AND ACCURACY (most important)
+- case_story is the doctor-verified transcription of the whole case in date order. Use it as the main source for the history, the sequence of events and the hospital course; use the structured fields for exact values, drugs and doses. If they disagree, use the structured field and keep the case_story's order.
+- Every date, number, dose, cycle count and drug you write must appear in the case data. Do not round, convert, recompute or "correct" anything. Do not change a drug's route or form (eye drops stay eye drops). Do not merge separate events into one or move an event to another date.
+- If you are unsure of a fact, leave it out or write ___ — never guess. A shorter correct summary is always better than a fuller wrong one.
+
 STORY ORDER (CHRONOLOGY)
 - The case data includes CHRONOLOGY: a timeline built automatically from the written dates (background, reports before admission, then Day 1, Day 2…), plus SERIAL TRENDS of repeated tests. Treat it as the backbone of the narrative and keep its order. Never move a dated event or result to a different day.
 - Narrative sections must read as one continuous clinical story from beginning to end:

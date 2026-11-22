@@ -33,7 +33,7 @@ export const DEFAULT_TEMPLATE = {
     { heading: "Treatment Given", kind: "treatment_given", guidance: "", optional: true },
     { heading: "Discharge Medications", kind: "discharge_medications", guidance: "The patient is being discharged on the following medications:" },
     { heading: "Discharge Advice and Follow-up", kind: "advice", guidance:
-`"The patient and attendants have been counselled regarding the disease, medication compliance, dietary modifications and appropriate lifestyle measures. They have been advised to continue the prescribed medications and monitor [BP/blood glucose/body weight/other relevant parameters]. The patient has been advised to follow up in the [department] OPD after [interval] with [relevant investigation reports]. They have also been advised to report to the nearest emergency department in case of fever, worsening symptoms, breathlessness, chest pain, altered sensorium, seizures, reduced urine output or any other concerning symptoms." Tailor the warning symptoms to this case.` },
+`"The patient and attendants have been counselled regarding the disease and medication compliance. They have been advised to [specific documented instructions: complete/continue named drugs with duration, eye/wound care, drugs kept on hold, diet only if documented] and monitor [parameters only if documented]. The patient has been advised to follow up in the [department] OPD after [interval] with [relevant investigation reports]. They have also been advised to report to the nearest emergency department in case of fever, worsening symptoms, breathlessness, chest pain, altered sensorium, seizures, reduced urine output or any other concerning symptoms." Tailor the warning symptoms to this case. Mention every documented follow-up (each OPD, interval, reports to bring, pending results). Never add generic advice (diet, lifestyle, body weight) that the notes do not mention.` },
     { heading: "", kind: "signature", guidance: "", fields: ["Junior Resident", "Senior Resident", "Consultant"] },
   ],
 };
@@ -41,7 +41,38 @@ export const DEFAULT_TEMPLATE = {
 /* ---------- helpers ---------- */
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
-const hl = (s) => esc(s).replace(/_{3,}|\[\?\]/g, (m) => `<mark>${m}</mark>`);
+/* ---------- Fact check ----------
+ * Every date and number the AI wrote is compared with the doctor-reviewed data.
+ * Anything not found there is highlighted so a wrong fact can't slip through unnoticed. */
+let FACTS = null; // { nums:Set, dates:Set } built from the reviewed data, or null = off
+const numKey = (x) => String(parseFloat(String(x).replace(/,/g, "")));
+export function setFactSource(text) {
+  if (text == null) { FACTS = null; return; }
+  const t = String(text);
+  const nums = new Set(), dates = new Set();
+  for (const m of t.matchAll(/\b(\d{1,2})\s*[/.-]\s*(\d{1,2})(?:\s*[/.-]\s*(\d{2,4}))?(?!\d)/g)) {
+    dates.add(`${+m[1]}-${+m[2]}`);
+    nums.add(numKey(m[1])); nums.add(numKey(m[2])); if (m[3]) nums.add(numKey(m[3]));
+  }
+  for (const m of t.replace(/(\d),(\d)/g, "$1$2").matchAll(/\d+(?:\.\d+)?/g)) nums.add(numKey(m[0]));
+  FACTS = { nums, dates };
+}
+const UNV = (m) => `<mark class="unv" title="Not found in the reviewed data — check this">${m}</mark>`;
+function factCheck(html) {
+  if (!FACTS) return html;
+  // Work only on text outside tags.
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (all, tag, text) => {
+    if (tag) return tag;
+    return text.replace(/\b(\d{1,2})\s*[/.-]\s*(\d{1,2})(?:\s*[/.-]\s*(\d{2,4}))?(?!\d)|\b\d+(?:[.,]\d+)*\b/g, (m, d, mo) => {
+      if (d !== undefined) return FACTS.dates.has(`${+d}-${+mo}`) ? m : UNV(m);
+      const v = parseFloat(m.replace(/,/g, ""));
+      if (Number.isInteger(v) && v < 10) return m; // small counts ("2 days", "day 3") are too noisy to check
+      if (v >= 1950 && v <= 2100 && FACTS.nums.has(numKey(m))) return m;
+      return FACTS.nums.has(numKey(m)) ? m : UNV(m);
+    });
+  });
+}
+const hl = (s) => factCheck(esc(s)).replace(/_{3,}|\[\?\]/g, (m) => `<mark>${m}</mark>`);
 const paras = (t) => String(t || "").split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)
   .map((x) => `<p>${hl(x).replace(/\n/g, "<br>")}</p>`).join("");
 const blank = (v) => (v && String(v).trim() ? esc(v) : "<mark>___</mark>");
