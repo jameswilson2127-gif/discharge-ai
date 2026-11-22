@@ -71,3 +71,9 @@ Detailed counts as 2 patients (Free and Pro). Reading-thinking per length can be
 | `EXTRACT_THINKING_CONCISE` | `low` |
 | `EXTRACT_THINKING_STANDARD` | `low` |
 | `EXTRACT_THINKING_DETAILED` | `high` |
+
+## Cost tuning (Nov 2026)
+Run `7-cost-breakdown.sql`, then redeploy `extract`, `generate`, `template`, `admin`.
+Defaults now: reading thinking `low` for all lengths, writing thinking `minimal`/off.
+Target: Detailed with 15 photos ≈ ₹2 on Flash-Lite. Check Admin → Usage → "Summary length" table
+("15 photos ≈" column). To raise accuracy for Detailed at higher cost: set `EXTRACT_THINKING_DETAILED` = `high`.

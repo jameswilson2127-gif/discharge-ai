@@ -6,8 +6,8 @@
   <meta name="robots" content="noindex, nofollow" />
   <title>Admin — Discharge AI</title>
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=10" />
-  <link rel="stylesheet" href="admin.css?v=10" />
+  <link rel="stylesheet" href="styles.css?v=11" />
+  <link rel="stylesheet" href="admin.css?v=11" />
 </head>
 <body>
   <header class="topbar">
@@ -80,8 +80,8 @@
       <section id="tab-settings" hidden>
         <p class="hint">Changes apply immediately. No redeploy needed.</p>
         <div class="grid">
-          <label>Free: patients / month<input id="s_free_extract" type="number" min="0" inputmode="numeric" /></label>
-          <label>Pro: patients / month (fair use)<input id="s_pro_extract" type="number" min="0" inputmode="numeric" /></label>
+          <label>Free: patients / month (Detailed counts as 2)<input id="s_free_extract" type="number" min="0" inputmode="numeric" /></label>
+          <label>Pro: patients / month (Detailed counts as 2)<input id="s_pro_extract" type="number" min="0" inputmode="numeric" /></label>
           <label>Free: drafts / month<input id="s_free_generate" type="number" min="0" inputmode="numeric" /></label>
           <label>Pro: drafts / month<input id="s_pro_generate" type="number" min="0" inputmode="numeric" /></label>
           <label class="span2">USD → INR rate (for showing costs in ₹)<input id="s_usd_inr" type="number" step="0.01" min="1" /></label>
@@ -95,6 +95,6 @@
   <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Loading…</p></div>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js?v=10"></script>
+  <script type="module" src="admin.js?v=11"></script>
 </body>
 </html>

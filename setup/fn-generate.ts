@@ -55,13 +55,20 @@ export function costOf(usage: any, model: string) {
   const input_tokens = Number(usage?.promptTokenCount ?? 0);
   const output_tokens = Number(usage?.candidatesTokenCount ?? 0) + Number(usage?.thoughtsTokenCount ?? 0);
   const [pin, pout] = priceFor(model);
-  return { input_tokens, output_tokens, cost_usd: +((input_tokens * pin + output_tokens * pout) / 1e6).toFixed(6) };
+  const thinking_tokens = Number(usage?.thoughtsTokenCount ?? 0); // already included in output_tokens
+  return { input_tokens, output_tokens, thinking_tokens, cost_usd: +((input_tokens * pin + output_tokens * pout) / 1e6).toFixed(6) };
 }
 async function logUsage(row: Record<string, unknown>) {
+  const post = (r: Record<string, unknown>) => fetch(`${env("SUPABASE_URL")}/rest/v1/usage_events`, {
+    method: "POST", headers: { ...serviceHeaders(), Prefer: "return=minimal" }, body: JSON.stringify(r),
+  });
   try {
-    await fetch(`${env("SUPABASE_URL")}/rest/v1/usage_events`, {
-      method: "POST", headers: { ...serviceHeaders(), Prefer: "return=minimal" }, body: JSON.stringify(row),
-    });
+    const r = await post(row);
+    // If a newer column isn't in the database yet (SQL file not run), still log the basics.
+    if (r.status === 400) {
+      const { thinking_tokens, length, case_id, photos, ...basic } = row;
+      await post(basic);
+    }
   } catch (e) { console.error("logUsage", e); }
 }
 
@@ -104,7 +111,9 @@ async function callGemini(opts: {
   system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number; thinkingLevel: string;
 }) {
   const model = env("GEMINI_TEXT_MODEL", env("GEMINI_MODEL", "gemini-2.5-flash"));
-  const body = JSON.stringify({
+  // If a model rejects the requested thinking setting (e.g. "minimal"), retry once with "low".
+  let level = opts.thinkingLevel;
+  const makeBody = () => JSON.stringify({
     systemInstruction: { parts: [{ text: opts.system }] },
     contents: [{ role: "user", parts: opts.parts }],
     generationConfig: {
@@ -112,9 +121,10 @@ async function callGemini(opts: {
       responseMimeType: "application/json",
       responseSchema: opts.schema,
       maxOutputTokens: opts.maxTokens,
-      thinkingConfig: thinkingCfg(model, opts.thinkingBudget, opts.thinkingLevel),
+      thinkingConfig: thinkingCfg(model, opts.thinkingBudget, level),
     },
   });
+  let body = makeBody();
   let last = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const r = await fetch(
@@ -144,6 +154,7 @@ async function callGemini(opts: {
       throw Object.assign(new Error(last), { model, usage: data.usageMetadata });
     }
     last = `${r.status} ${await r.text()}`;
+    if (r.status === 400 && /thinking/i.test(last) && level !== "low") { level = "low"; body = makeBody(); attempt--; continue; }
     if (r.status !== 429 && r.status < 500) break;
     await new Promise((s) => setTimeout(s, 1500));
   }
@@ -311,8 +322,9 @@ Deno.serve(async (req: Request) => {
       parts: [{ text: `${ctx}\n\nVERIFIED CASE DATA (JSON):\n${caseText}` }],
       schema: { type: "OBJECT", properties, required },
       maxTokens: Number(env("GENERATE_MAX_TOKENS", "16000")),
-      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", length === "concise" ? "0" : "1024")),
-      thinkingLevel: env("GENERATE_THINKING_LEVEL", "low"),
+      // Writing from already-checked data needs little reasoning: thinking off by default (cost).
+      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "0")),
+      thinkingLevel: env("GENERATE_THINKING_LEVEL", "minimal"),
     });
     await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, length, ok: true, model, ...costOf(usage, model) });
     const sections: Record<string, string> = {};
