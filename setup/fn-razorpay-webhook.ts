@@ -65,8 +65,16 @@ Deno.serve(async (req: Request) => {
       case "subscription.activated":
       case "subscription.charged":
       case "subscription.resumed": {
-        const end = Number(sub.current_end);
         const plan = sub.notes?.plan === "yearly" ? "yearly" : "monthly";
+        // Safeguard: a paid period is never shorter than the plan the user bought, even if the
+        // Razorpay plan was set up with the wrong billing period (e.g. a "yearly" plan billed monthly).
+        const pay0 = evt?.payload?.payment?.entity;
+        const start = Number(sub.current_start) || Number(pay0?.created_at) || Math.floor(Date.now() / 1000);
+        const minEnd = start + (plan === "yearly" ? 365 : 28) * 86400;
+        const end = Math.max(Number(sub.current_end) || 0, minEnd);
+        if (Number(sub.current_end) && Number(sub.current_end) < minEnd) {
+          console.warn(`plan period mismatch: ${plan} subscription ${sub.id} has a shorter billing period — check the Razorpay plan`);
+        }
         if (end > 0) {
           await updateProfile(userId, {
             pro_until: new Date((end + GRACE_SECONDS) * 1000).toISOString(),
