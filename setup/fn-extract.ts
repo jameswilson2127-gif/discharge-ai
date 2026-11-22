@@ -166,6 +166,13 @@ async function callGemini(opts: {
 }
 
 // ---------- Prompt + schema ----------
+// Appended to SYSTEM according to the summary length the doctor chose.
+const DETAIL_RULES: Record<string, string> = {
+  concise: `\n\nDETAIL LEVEL: CONCISE. Daily progress: 2–3 sentences per day, focused on what changed (new symptoms, abnormal vitals, results, treatment started/stopped/changed, procedures, consults, complications). Keep every number you mention. Specialised results: the key finding and main values only. All other fields as usual — never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
+  standard: `\n\nDETAIL LEVEL: STANDARD. Daily progress: 3–5 sentences per day covering status, key vitals, results, treatment changes, procedures, consults and plan. Specialised results: main findings with their values. Never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
+  detailed: `\n\nDETAIL LEVEL: DETAILED. Daily progress: 3–8 sentences per day, transcribing everything written with every number. Specialised results in full (every marker, every value).`,
+};
+
 const SYSTEM = `You are a meticulous medical records transcriber in an Indian government teaching hospital (Department of General Medicine).
 You receive photos of a single in-patient's case file: handwritten progress notes, printed or handwritten investigation reports, and treatment/medication charts.
 Your job is ONLY to transcribe and organise what is written. You are not diagnosing or advising.
@@ -189,7 +196,7 @@ STRICT RULES
 5. PRIVACY: Do NOT transcribe any identifier anywhere: the patient's name, relatives'/attendants' names, address, phone number, e-mail, UHID, IPD/CR/MRD/registration number, bed or ward number, Aadhaar, ABHA, PM-JAY/insurance ID, or photographs of faces. Ignore them even if clearly visible. Age and sex are allowed. Refer to the person only as "the patient".
 6. Medications: one row per distinct drug order, including additives (e.g. "KCl 10 mEq/L in RL"). If a dose was changed, make a separate row for each regimen with dates in "dates". Put the dosage form in "form" (INJ, TAB, CAP, SYP, NEB, INH, IVF, OINT, DROPS, SACHET, other). "on_discharge" is true if the drug appears in a discharge/advice list, OR in the "Adv"/"c/w" orders of the LAST dated note of a patient who is improving or being discharged; false for drugs that were withheld or stopped, and for one-time (STAT) doses.
 7. Investigations: one row per numeric test result with its date and unit if written; add the conventional unit only when the test has one standard unit (Hb g/dL; urea, creatinine, bilirubin mg/dL; Na, K, Cl mmol/L; SGOT, SGPT, ALP U/L; total protein, albumin, globulin g/dL; ESR mm/hr; TLC and platelets ×10³/µL when written with "K"). Specialised or descriptive results — bone marrow, flow cytometry (list EVERY marker and whether positive/negative), serum free light chains with ratio, SPEP/immunofixation, MRD, PET-CT, CT/MRI/USG, biopsy, cultures, echo — go in "imaging_and_other_tests" with their own dates and the full finding. Include reports from BEFORE this admission (outside/referral/previous reports, old discharge cards) with their own report dates — never re-date them to the admission. Put abnormal flag "H" or "L" only if printed or obvious from the printed reference range; otherwise "".
-8. Daily progress: one row per dated note (if a day has several notes, e.g. morning/evening/night, keep them in that day's row in time order). Transcribe faithfully and in DETAIL, keeping every number. Cover whatever is written of: complaints/symptoms; vitals (BP, PR, RR, SpO2 with O2 support, temperature, GCS, RBS); intake/output and urine output; examination findings by system; investigations reported or reviewed that day with values; treatment changes (drugs started, stopped or dose changed, by name; fluids, oxygen, transfusions); procedures; specialist opinions and their advice; the plan. Usually 3–8 sentences per day. Do not shorten to a vague summary such as "patient stable".
+8. Daily progress: one row per dated note (if a day has several notes, e.g. morning/evening/night, keep them in that day's row in time order). Transcribe faithfully and in DETAIL, keeping every number. Cover whatever is written of: complaints/symptoms; vitals (BP, PR, RR, SpO2 with O2 support, temperature, GCS, RBS); intake/output and urine output; examination findings by system; investigations reported or reviewed that day with values; treatment changes (drugs started, stopped or dose changed, by name; fluids, oxygen, transfusions); procedures; specialist opinions and their advice; the plan. Length per day: see DETAIL LEVEL at the end. Do not shorten to a vague summary such as "patient stable".
 9. Events: significant events (procedures, dialysis, intubation, transfusion, arrest/CPR, specialist consults, complications) with date and time if written.
 10. Past history: fill "past_events" with every earlier illness, diagnosis, hospitalisation, procedure and long-term treatment, keeping when it happened as written. Durations such as "k/c/o T2DM x 8 yrs" go here too ("8 years back"). Convert relative times only if the note gives the reference date.
 11. Discharge plan: drugs withheld/on hold → "held_drugs"; tests sent or planned whose results are awaited → "pending_investigations"; follow-up instructions (OPD, unit, timing) → "follow_up_plan".
@@ -288,8 +295,10 @@ Deno.serve(async (req: Request) => {
   if (!user) return json({ error: "Please sign in again." }, 401);
   if (!(await termsAccepted(user.id))) return json({ error: "Please accept the Terms of Use to continue.", code: "terms" }, 428);
 
-  let payload: { images?: { mime: string; data: string; kind: string }[]; case_id?: string };
+  let payload: { images?: { mime: string; data: string; kind: string }[]; case_id?: string; length?: string };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
+  // Summary length chosen on step 1. Detailed reads more carefully and counts as 2 patients.
+  const length = ["concise", "standard", "detailed"].includes(String(payload?.length)) ? String(payload.length) : "standard";
   // Random per-patient id that links this discharge's AI calls for cost reporting. Contains no patient data.
   const caseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(payload?.case_id ?? "")) ? String(payload.case_id) : null;
 
@@ -304,11 +313,22 @@ Deno.serve(async (req: Request) => {
   }
   if (total > MAX_TOTAL_B64) return json({ error: "Photos are too large in total. Remove a few." }, 400);
 
-  const q = (await rpc("use_quota", {
+  const takeOne = async () => (await rpc("use_quota", {
     p_user: user.id, p_kind: "extract",
     p_free_limit: Number(env("FREE_MONTHLY_LIMIT", "5")),
     p_pro_limit: Number(env("PRO_MONTHLY_LIMIT", "300")),
   }))?.[0];
+  const refund = () => rpc("refund_quota", { p_user: user.id, p_kind: "extract" }).catch(() => {});
+  let q = await takeOne();
+  const units = length === "detailed" ? 2 : 1;
+  if (q?.allowed && units === 2) {
+    const q2 = await takeOne();
+    if (!q2?.allowed) {
+      await refund();
+      return json({ error: "A Detailed summary uses 2 patients, but only 1 is left this month. Choose Concise or Standard.", code: "detailed_needs_2", quota: q }, 402);
+    }
+    q = q2;
+  }
   if (q?.blocked) return json({ error: "This account has been suspended. Please contact support." }, 403);
   if (!q?.allowed) {
     return json({
@@ -328,16 +348,16 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { data, usage, model } = await callGemini({
-      system: SYSTEM, parts, schema: SCHEMA,
+      system: SYSTEM + DETAIL_RULES[length], parts, schema: SCHEMA,
       maxTokens: Number(env("EXTRACT_MAX_TOKENS", "32000")),
-      thinkingBudget: Number(env("EXTRACT_THINKING_BUDGET", "4096")),
-      thinkingLevel: env("EXTRACT_THINKING_LEVEL", "high"),
+      thinkingBudget: Number(env(`EXTRACT_THINKING_BUDGET_${length.toUpperCase()}`, length === "detailed" ? "4096" : "1024")),
+      thinkingLevel: env(`EXTRACT_THINKING_${length.toUpperCase()}`, length === "detailed" ? "high" : "low"),
     });
-    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, ok: true, model, ...costOf(usage, model) });
+    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: true, model, ...costOf(usage, model) });
     return json({ data: scrub(data), quota: q });
   } catch (e) {
-    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
-    await rpc("refund_quota", { p_user: user.id, p_kind: "extract" }).catch(() => {});
+    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
+    for (let i = 0; i < units; i++) await refund();
     console.error(e);
     return json({ error: "Could not read the photos. Please try again." }, 502);
   }

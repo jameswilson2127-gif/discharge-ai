@@ -184,6 +184,12 @@ function cleanTemplate(t: any): { title: string; sections: Section[] } | null {
   return { title: String(t.title ?? "DISCHARGE SUMMARY").slice(0, 120), sections };
 }
 
+const LENGTHS: Record<string, string> = {
+  concise: "CONCISE — about half a page in total. Hospital course 1–2 short paragraphs (about 100–250 words) grouping the stay into phases; other narrative sections 1–3 sentences each.",
+  standard: "STANDARD — Hospital course 2–4 paragraphs (about 200–450 words), mentioning each important day or phase; other narrative sections at the template's usual length.",
+  detailed: "DETAILED — full chronological account: hospital course 3–6+ paragraphs (about 250–700 words, longer for long stays) covering every dated note and event.",
+};
+
 const SYSTEM = `You write discharge summaries for an Indian teaching hospital, following the department's own template exactly.
 You are given (1) the TEMPLATE: the sections you must write, each with guidance showing the department's model phrasing with [placeholders], and (2) doctor-verified CASE DATA as JSON.
 
@@ -210,7 +216,7 @@ HOSPITAL COURSE (most important part — must be DETAILED)
 - Wherever the template describes the course in hospital (a "Hospital Course" section, or the course part of a "Clinical Summary"/"Case Summary"), write a full chronological account. Use the template's opening and closing phrases, but do NOT shorten the course to match the template's length.
 - Cover EVERY dated progress note and event in date order, using dates ("On 12/11/2026…", "On day 3 of admission…") or clearly grouped phases for long stays. For each day or phase include, where documented: clinical status and symptoms; vitals with values and their trend; oxygen/ventilatory support; examination changes; investigations reported, with values and serial trends; treatment started, stopped or modified, naming the drugs (doses where clinically relevant: antibiotics, steroids, insulin, inotropes, anticoagulants, diuretics); fluids, transfusions and procedures; specialist consultations and their advice; complications and how they were managed.
 - Then describe the state at the end of the stay as required by OUTCOME.
-- Length scales with the stay and the documentation: typically 3–6 paragraphs and 250–700 words; a short uneventful stay may be shorter, but never leave out a documented change, result or event. Detail must come only from the case data — never pad with generic sentences.
+- Length follows SUMMARY LENGTH (given with the case). Whatever the length, never leave out the diagnosis, key results, a drug started/stopped/changed, a complication, a drug on hold or a discharge drug — a shorter summary only means a briefer narrative. Detail must come only from the case data — never pad with generic sentences.
 
 OUTCOME
 - Any part describing the end of the stay must match OUTCOME:
@@ -240,8 +246,9 @@ Deno.serve(async (req: Request) => {
   if (!user) return json({ error: "Please sign in again." }, 401);
   if (!(await termsAccepted(user.id))) return json({ error: "Please accept the Terms of Use to continue.", code: "terms" }, 428);
 
-  let payload: { case?: Record<string, unknown>; options?: Record<string, string>; template?: unknown; case_id?: string };
+  let payload: { case?: Record<string, unknown>; options?: Record<string, string>; template?: unknown; case_id?: string; length?: string };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
+  const length = ["concise", "standard", "detailed"].includes(String(payload?.length)) ? String(payload.length) : "standard";
   // Random per-patient id that links this discharge's AI calls for cost reporting. Contains no patient data.
   const caseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(payload?.case_id ?? "")) ? String(payload.case_id) : null;
   const c = payload.case;
@@ -278,6 +285,7 @@ Deno.serve(async (req: Request) => {
   const ctx = [
     `DOCUMENT TITLE: ${tpl.title}`,
     `OUTCOME: ${OUTCOMES[o.outcome] ?? OUTCOMES.discharged}`,
+    `SUMMARY LENGTH: ${LENGTHS[length]}`,
     `DEPARTMENT: ${String(o.dept || (c as Record<string, unknown>).department || (payload.template as Record<string, unknown> | undefined)?.department || "___").slice(0, 120)}`,
     o.followup ? `FOLLOW-UP INTERVAL: ${String(o.followup).slice(0, 60)}` : "FOLLOW-UP INTERVAL: not specified (use ___)",
     o.monitor ? `PARAMETERS TO MONITOR: ${String(o.monitor).slice(0, 200)}` : "",
@@ -303,10 +311,10 @@ Deno.serve(async (req: Request) => {
       parts: [{ text: `${ctx}\n\nVERIFIED CASE DATA (JSON):\n${caseText}` }],
       schema: { type: "OBJECT", properties, required },
       maxTokens: Number(env("GENERATE_MAX_TOKENS", "16000")),
-      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "1024")),
+      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", length === "concise" ? "0" : "1024")),
       thinkingLevel: env("GENERATE_THINKING_LEVEL", "low"),
     });
-    await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, ok: true, model, ...costOf(usage, model) });
+    await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, length, ok: true, model, ...costOf(usage, model) });
     const sections: Record<string, string> = {};
     for (const k of Object.keys(properties)) if (k !== "final_diagnosis") sections[k] = scrub(String(data?.[k] ?? "")) as string;
     return json({
@@ -314,7 +322,7 @@ Deno.serve(async (req: Request) => {
       quota: q,
     });
   } catch (e) {
-    await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
+    await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, length, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
     await rpc("refund_quota", { p_user: user.id, p_kind: "generate" }).catch(() => {});
     console.error(e);
     return json({ error: "Could not write the summary. Please try again." }, 502);

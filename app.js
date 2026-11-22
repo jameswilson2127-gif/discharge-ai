@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=9";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=9";
-import { buildChronology } from "./chrono.js?v=9";
-import { labPanel, consistencyIssues } from "./checks.js?v=9";
+import { CONFIG } from "./config.js?v=10";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc } from "./doc.js?v=10";
+import { buildChronology } from "./chrono.js?v=10";
+import { labPanel, consistencyIssues } from "./checks.js?v=10";
 
 /* ============================================================
    Setup & helpers
@@ -67,7 +67,7 @@ let session = null;
 let profile = null;
 const state = {
   step: "patient",
-  patient: { outcome: "discharged", dept: "", templateId: store.get(LS, "dai_last_tpl", "default") },
+  patient: { outcome: "discharged", dept: "", length: store.get(LS, "dai_length", "standard"), templateId: store.get(LS, "dai_last_tpl", "default") },
   photos: [],          // {id, kind, url} — memory only, never persisted
   data: null,          // extracted + reviewed case data
   draft: null,         // AI-written sections
@@ -81,6 +81,7 @@ const saveCase = debounce(() => {
   store.set(SS, CASE_KEY, {
     savedAt: Date.now(),
     caseId: state.caseId,
+    readLength: state.readLength,
     step: state.step === "templates" ? "patient" : state.step,
     patient: state.patient, data: state.data, draft: state.draft, draftTemplate: state.draftTemplate, docHtml: state.docHtml,
   });
@@ -93,6 +94,7 @@ function restoreCase() {
   if (!c.savedAt || Date.now() - c.savedAt > ttl) { store.del(SS, CASE_KEY); return; } // stale case: wipe
   Object.assign(state.patient, c.patient || {});
   if (c.caseId) state.caseId = c.caseId;
+  if (c.readLength) state.readLength = c.readLength;
   for (const k of LEGACY_ID_FIELDS) delete state.patient[k];
   state.data = c.data || null;
   state.draft = c.draft || null;
@@ -114,12 +116,14 @@ async function loadProfile() {
     limitsLoaded = true;
     const { data: lim } = await sb.rpc("public_limits");
     if (lim?.free_extract >= 0) CONFIG.FREE_MONTHLY_LIMIT = lim.free_extract;
+    if (lim?.pro_extract >= 0) CONFIG.PRO_MONTHLY_LIMIT = lim.pro_extract;
   }
   const { data, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
   if (!error) profile = data;
   profileLoaded = true;
   renderAccount();
   renderGate();
+  renderLength();
 }
 
 function isAdmin() {
@@ -592,6 +596,7 @@ function fillPatientForm() {
     const el = $(`#p_${f}`);
     if (el) el.value = state.patient[f] ?? "";
   }
+  renderLength();
   // Leave empty so the department read from the sheets can be used; show the template's as a hint.
   $("#p_dept").placeholder = `From the sheets, else "${currentTemplate().department || CONFIG.DEFAULT_DEPARTMENT || ""}"`;
   if (state.patient.dept === (currentTemplate().department || CONFIG.DEFAULT_DEPARTMENT)) { state.patient.dept = ""; $("#p_dept").value = ""; }
@@ -800,14 +805,21 @@ async function extract() {
     $(".photo.needs-id")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return toast(`${pending} photo(s) still need "Mask IDs" or "No IDs" before reading.`, true, 6000);
   }
+  const length = state.patient.length || "standard";
+  if (length === "detailed") {
+    const left = patientsLeft();
+    if (!confirm(`Detailed uses 2 patients from your monthly allowance${left !== null ? ` (${left} left)` : ""}. Continue?`)) return;
+  }
   busy(`Reading ${state.photos.length} photo(s), usually 20–60 seconds`);
   try {
     const r = await api("extract", {
       case_id: state.caseId || newCaseId(),
+      length,
       images: state.photos.map((p) => ({ mime: "image/jpeg", data: p.url.split(",")[1], kind: p.kind })),
     });
     state.data = normalise(r.data);
     state.draft = null; state.draftTemplate = null; state.docHtml = null;
+    state.readLength = length; // how carefully the photos were read
     const P = state.patient;
     if (/^(male|female)$/i.test(state.data.sex || "")) state.data.sex = state.data.sex[0].toUpperCase() + state.data.sex.slice(1).toLowerCase();
     if (!P.doa && state.data.admission_date) P.doa = state.data.admission_date;
@@ -1054,6 +1066,7 @@ async function generate() {
   try {
     const r = await api("generate", {
       case_id: state.caseId || newCaseId(),
+      length: state.patient.length || "standard",
       case: caseData,
       template,
       options: { outcome: P.outcome || "discharged", followup: P.followup || "", monitor: P.monitor || "", extra: P.extra || "", dept: deptName() },
@@ -1108,6 +1121,38 @@ function deptName() {
   return currentTemplate().department || "";
 }
 
+/* ---------- Summary length (Concise / Standard / Detailed) ---------- */
+const LENGTH_NAMES = { concise: "Concise", standard: "Standard", detailed: "Detailed" };
+function patientsLeft() {
+  if (!profile) return null;
+  const lim = isPro() ? (CONFIG.PRO_MONTHLY_LIMIT ?? 300) : CONFIG.FREE_MONTHLY_LIMIT;
+  const used = profile.usage_month === monthIST() ? profile.extract_count : 0;
+  return Math.max(lim - used, 0);
+}
+function renderLength() {
+  const len = state.patient.length || "standard";
+  const left = patientsLeft();
+  // Detailed needs 2 patients; once photos are read, changing length only affects rewrites (no allowance used).
+  const blockDetailed = !state.data && left !== null && left < 2;
+  for (const r of $$('input[name="len"]')) {
+    r.checked = r.value === len;
+    r.disabled = r.value === "detailed" && blockDetailed;
+    r.closest(".len").classList.toggle("off", r.disabled);
+  }
+  if ($("#finalLen")) $("#finalLen").value = len;
+  const base = "All lengths keep the diagnosis, key results, every drug change, complications and discharge drugs.";
+  $("#lenNote").textContent = left === null ? base
+    : blockDetailed ? `Only ${left} patient${left === 1 ? "" : "s"} left this month, so Detailed (2 patients) isn't available. ${base}`
+    : `${left} patients left this month. ${base}`;
+}
+function setLength(v) {
+  if (!LENGTH_NAMES[v]) return;
+  state.patient.length = v;
+  store.set(LS, "dai_length", v);
+  saveCase();
+  renderLength();
+}
+
 function setVerified(v) {
   $("#finalVerify").checked = v;
   $("#printBtn").disabled = !v;
@@ -1127,7 +1172,8 @@ function clearCase() {
   if (SS) store.del(SS, CASE_KEY);
   fillPatientForm(); renderPhotos(); $("#doc").innerHTML = "";
   setVerified(false);
-  state.caseId = null; // next patient gets a fresh id
+  state.caseId = null; state.readLength = null;
+  renderLength(); // next patient gets a fresh id
 }
 
 function newPatient() {
@@ -1210,6 +1256,13 @@ function bind() {
   $("#doc").addEventListener("input", onDocEdit);
   $("#optTreatment").addEventListener("change", () => { updateDocWarn(); onDocEdit(); });
   $("#regenBtn").addEventListener("click", generate);
+  $("#lenPick").addEventListener("change", (e) => { if (e.target.name === "len") setLength(e.target.value); });
+  $("#finalLen").addEventListener("change", (e) => {
+    setLength(e.target.value);
+    if (e.target.value === "detailed" && state.readLength && state.readLength !== "detailed")
+      toast(`The photos were read at ${LENGTH_NAMES[state.readLength]} detail. Rewrite works from that; for every value, read the photos again as Detailed.`, false, 7000);
+    else toast(`Tap Rewrite to redo the summary as ${LENGTH_NAMES[e.target.value]}. No extra patient is used.`);
+  });
   $("#finalVerify").addEventListener("change", (e) => setVerified(e.target.checked));
   $("#rxReview").addEventListener("click", onRxClick);
   $("#rxFinal").addEventListener("click", onRxClick);

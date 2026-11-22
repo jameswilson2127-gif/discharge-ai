@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=9";
-import { esc } from "./doc.js?v=9";
+import { CONFIG } from "./config.js?v=10";
+import { esc } from "./doc.js?v=10";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);
@@ -205,17 +205,19 @@ async function loadCases(reset = true) {
       card(rupees(m.max_usd), "Most expensive discharge"),
       card(rupees(n(m.avg_usd) * n(settings?.pro_extract || 0)), "If a Pro user hits the limit", `${int(settings?.pro_extract || 0)} patients × average`),
     ].join("");
-    const bm = m.by_model || [];
-    $("#modelTable").innerHTML = bm.length
-      ? `<thead><tr><th>Reading model</th><th>Discharges</th><th>Average cost</th></tr></thead><tbody>${bm.map((x) => `<tr><td>${esc(shortModel(x.model))}</td><td>${int(x.cases)}</td><td>${rupees(x.avg_usd)}</td></tr>`).join("")}</tbody>`
-      : "";
+    const bm = m.by_model || [], bl = m.by_length || [];
+    const LEN = { concise: "Concise", standard: "Standard", detailed: "Detailed" };
+    const tbl = (head, rows, label) => rows.length
+      ? `<thead><tr><th>${head}</th><th>Discharges</th><th>Average cost</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(label(x))}</td><td>${int(x.cases)}</td><td>${rupees(x.avg_usd)}</td></tr>`).join("")}</tbody>` : "";
+    $("#modelTable").innerHTML = tbl("Reading model", bm, (x) => shortModel(x.model));
+    $("#lengthTable").innerHTML = tbl("Summary length", bl, (x) => LEN[x.length] || x.length);
   }
-  $("#caseTable").innerHTML = `<thead><tr><th>When</th><th>User</th><th>Photos</th><th>Reads</th><th>Drafts</th><th>Cost</th><th>Models</th></tr></thead>
+  $("#caseTable").innerHTML = `<thead><tr><th>When</th><th>User</th><th>Length</th><th>Photos</th><th>Reads</th><th>Drafts</th><th>Cost</th><th>Models</th></tr></thead>
     <tbody>${cases.rows.length ? cases.rows.map((c) => `<tr>
-      <td>${timeShort(c.at)}</td><td class="em">${esc(c.email || "deleted user")}</td><td>${c.photos ?? "—"}</td>
+      <td>${timeShort(c.at)}</td><td class="em">${esc(c.email || "deleted user")}</td><td>${esc({ concise: "Concise", standard: "Standard", detailed: "Detailed" }[c.length] || "—")}</td><td>${c.photos ?? "—"}</td>
       <td>${int(c.reads)}</td><td>${int(c.drafts)}${n(c.errors) ? ` <b style="color:var(--danger)" title="failed calls">· ${int(c.errors)}✕</b>` : ""}</td>
       <td><b>${rupees(c.cost_usd)}</b></td><td class="mdl">${esc(shortModel(c.read_model))}${c.write_model && c.write_model !== c.read_model ? ` / ${esc(shortModel(c.write_model))}` : ""}</td></tr>`).join("")
-      : `<tr><td colspan="7" style="text-align:center;color:var(--muted)">No discharges tracked yet. New patients will appear here.</td></tr>`}</tbody>`;
+      : `<tr><td colspan="8" style="text-align:center;color:var(--muted)">No discharges tracked yet. New patients will appear here.</td></tr>`}</tbody>`;
   $("#moreCases").hidden = cases.rows.length >= cases.total;
 }
 

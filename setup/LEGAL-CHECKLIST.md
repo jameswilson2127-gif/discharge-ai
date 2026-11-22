@@ -59,3 +59,15 @@
 | `PRICES_JSON` | USD per 1M tokens so the admin cost is right, e.g. `{"gemini-3.5-flash":[0.5,3]}` | copy from Google's pricing page |
 
 If `GEMINI_VISION_MODEL` / `GEMINI_TEXT_MODEL` are not set, both use `GEMINI_MODEL`.
+
+## Summary length (Concise / Standard / Detailed)
+
+Run `6-length.sql`, then redeploy `extract`, `generate` and `admin`.
+Detailed counts as 2 patients (Free and Pro). Reading-thinking per length can be tuned with secrets
+(the old `EXTRACT_THINKING_LEVEL` is no longer used):
+
+| Secret | Default |
+|---|---|
+| `EXTRACT_THINKING_CONCISE` | `low` |
+| `EXTRACT_THINKING_STANDARD` | `low` |
+| `EXTRACT_THINKING_DETAILED` | `high` |

@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -146,6 +146,17 @@
       </div>
       <p class="note-line">UHID, IPD number and other identifiers are not collected. They print as blank lines for you to fill by hand.</p>
 
+      <h3 class="sub">Summary length</h3>
+      <div class="len-pick" id="lenPick">
+        <label class="len"><input type="radio" name="len" value="concise" />
+          <b>Concise</b><span>About half a page. For short, uncomplicated stays.</span><em>1 patient</em></label>
+        <label class="len"><input type="radio" name="len" value="standard" />
+          <b>Standard</b><span>About a page. Key days and every change. Suits most stays.</span><em>1 patient</em></label>
+        <label class="len"><input type="radio" name="len" value="detailed" />
+          <b>Detailed</b><span>Full day-by-day account with every value. For long or complex stays.</span><em>2 patients</em></label>
+      </div>
+      <p class="note-line" id="lenNote">All lengths keep the diagnosis, key results, every drug change, complications and discharge drugs.</p>
+
       <h3 class="sub">Discharge details</h3>
       <div class="grid">
         <label class="span2">Outcome
@@ -214,6 +225,9 @@
         <label class="confirm verify"><input type="checkbox" id="finalVerify" /> I have read this draft in full against the case file, corrected it, and take responsibility for it as the treating doctor.</label>
         <div class="actions tight">
           <button class="btn" data-go="review">← Review</button>
+          <label class="inline len-inline">Length
+            <select id="finalLen"><option value="concise">Concise</option><option value="standard">Standard</option><option value="detailed">Detailed</option></select>
+          </label>
           <button id="regenBtn" class="btn">↻ Rewrite</button>
           <button id="copyBtn" class="btn" disabled>Copy text</button>
           <button id="printBtn" class="btn primary" disabled>Print / Save PDF</button>
@@ -309,6 +323,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=9"></script>
+  <script type="module" src="app.js?v=10"></script>
 </body>
 </html>
