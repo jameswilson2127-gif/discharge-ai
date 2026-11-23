@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=19";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=19";
-import { buildChronology } from "./chrono.js?v=19";
-import { labPanel, consistencyIssues } from "./checks.js?v=19";
+import { CONFIG } from "./config.js?v=20";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=20";
+import { buildChronology } from "./chrono.js?v=20";
+import { labPanel, consistencyIssues } from "./checks.js?v=20";
 
 /* ============================================================
    Setup & helpers
@@ -286,11 +286,11 @@ async function api(fn, body, { quiet = false } = {}) {
       return await apiOnce(fn, body);
     } catch (e) {
       if (!e.busy || i >= BUSY_WAITS.length || (quiet && i >= 1)) {
-        if (e.busy) e.message = "Google's AI is overloaded right now. Nothing was charged. Please try again in a few minutes.";
+        if (e.busy) e.message = "Server is experiencing high demand. Nothing was charged. Please try again in a few minutes.";
         throw e;
       }
       const wait = BUSY_WAITS[i];
-      if (!quiet) toast(`Google's AI is busy - retrying automatically in ${wait} s (attempt ${i + 2} of ${BUSY_WAITS.length + 1}). Nothing is charged for busy attempts.`, false, wait * 1000);
+      if (!quiet) toast(`Server is experiencing high demand - retrying automatically in ${wait} s (attempt ${i + 2} of ${BUSY_WAITS.length + 1}). Nothing is charged for busy attempts.`, false, wait * 1000);
       await new Promise((ok) => setTimeout(ok, wait * 1000));
     }
   }

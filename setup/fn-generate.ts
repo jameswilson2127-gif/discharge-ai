@@ -357,7 +357,7 @@ Deno.serve(async (req: Request) => {
     await rpc("refund_quota", { p_user: user.id, p_kind: "generate" }).catch(() => {});
     console.error(e);
     if (/^Gemini error: (429|5\d\d)/.test(String((e as Error)?.message ?? ""))) {
-      return json({ error: "Google's AI is busy right now.", code: "busy" }, 503);
+      return json({ error: "Server is experiencing high demand.", code: "busy" }, 503);
     }
     return json({ error: "Could not write the summary. Please try again." }, 502);
   }
