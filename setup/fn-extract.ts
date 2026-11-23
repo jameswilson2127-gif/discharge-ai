@@ -125,7 +125,7 @@ function thinkingCfg(model: string, budget: number, level: string) {
 async function callGemini(opts: {
   system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number; thinkingLevel: string;
 }) {
-  const model = env("GEMINI_VISION_MODEL", env("GEMINI_MODEL", "gemini-2.5-flash"));
+  let model = env("GEMINI_VISION_MODEL", env("GEMINI_MODEL", "gemini-2.5-flash"));
   // If a model rejects the requested thinking setting (e.g. "minimal"), retry once with "low".
   let level = opts.thinkingLevel;
   const makeBody = () => JSON.stringify({
@@ -139,39 +139,47 @@ async function callGemini(opts: {
       thinkingConfig: thinkingCfg(model, opts.thinkingBudget, level),
     },
   });
-  let body = makeBody();
+  // When Google's model is overloaded (429/503), retry once, then switch to a fallback model
+  // instead of failing - the doctor gets the summary without waiting or retrying.
+  const models = [model, env("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")].filter((m, i, a) => m && a.indexOf(m) === i);
   let last = "";
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": env("GEMINI_API_KEY") }, body },
-    );
-    if (r.ok) {
-      const data = await r.json();
-      const cand = data?.candidates?.[0];
-      const text = (cand?.content?.parts ?? [])
-        .filter((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
-        .map((p: { text: string }) => p.text).join("");
-      const finish = cand?.finishReason ?? "no candidate";
-      const outTok = data?.usageMetadata?.candidatesTokenCount ?? "?";
-      const thinkTok = data?.usageMetadata?.thoughtsTokenCount ?? 0;
-      if (!text) {
-        last = `Empty AI response (${finish})`;
-      } else {
-        try {
-          return { data: JSON.parse(text), usage: data.usageMetadata ?? null, model };
-        } catch {
-          // Never log the text itself (it may contain patient details) — only why it failed.
-          last = `AI returned malformed JSON (finish: ${finish}, output ${outTok} tok, thinking ${thinkTok} tok, model ${model})`;
+  for (const m of models) {
+    model = m; level = opts.thinkingLevel;
+    let body = makeBody();
+    let overloaded = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": env("GEMINI_API_KEY") }, body },
+      );
+      if (r.ok) {
+        const data = await r.json();
+        const cand = data?.candidates?.[0];
+        const text = (cand?.content?.parts ?? [])
+          .filter((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
+          .map((p: { text: string }) => p.text).join("");
+        const finish = cand?.finishReason ?? "no candidate";
+        const outTok = data?.usageMetadata?.candidatesTokenCount ?? "?";
+        const thinkTok = data?.usageMetadata?.thoughtsTokenCount ?? 0;
+        if (!text) {
+          last = `Empty AI response (${finish})`;
+        } else {
+          try {
+            return { data: JSON.parse(text), usage: data.usageMetadata ?? null, model };
+          } catch {
+            // Never log the text itself (it may contain patient details) — only why it failed.
+            last = `AI returned malformed JSON (finish: ${finish}, output ${outTok} tok, thinking ${thinkTok} tok, model ${model})`;
+          }
         }
+        if (attempt === 0) continue; // one retry for truncated / looping output
+        throw Object.assign(new Error(last), { model, usage: data.usageMetadata });
       }
-      if (attempt === 0) continue; // one retry for truncated / looping output
-      throw Object.assign(new Error(last), { model, usage: data.usageMetadata });
+      last = `${r.status} ${await r.text()}`;
+      if (r.status === 400 && /thinking/i.test(last) && level !== "low") { level = "low"; body = makeBody(); attempt--; continue; }
+      if (r.status === 429 || r.status >= 500) { overloaded = true; if (attempt === 0) await new Promise((s) => setTimeout(s, 1200)); continue; }
+      break; // other errors: don't retry
     }
-    last = `${r.status} ${await r.text()}`;
-    if (r.status === 400 && /thinking/i.test(last) && level !== "low") { level = "low"; body = makeBody(); attempt--; continue; }
-    if (r.status !== 429 && r.status < 500) break;
-    await new Promise((s) => setTimeout(s, 1500));
+    if (!overloaded) break;
   }
   throw Object.assign(new Error(last.startsWith("AI returned") || last.startsWith("Empty") ? last : `Gemini error: ${last.slice(0, 200)}`), { model });
 }

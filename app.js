@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=17";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=17";
-import { buildChronology } from "./chrono.js?v=17";
-import { labPanel, consistencyIssues } from "./checks.js?v=17";
+import { CONFIG } from "./config.js?v=18";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=18";
+import { buildChronology } from "./chrono.js?v=18";
+import { labPanel, consistencyIssues } from "./checks.js?v=18";
 
 /* ============================================================
    Setup & helpers
@@ -881,6 +881,8 @@ async function extract() {
     $("#medConfirm").checked = false;
     loadProfile();
     showStep("review");
+    pre = null; preCount = 0;
+    setTimeout(prefetchDraft, 300);
   } catch (e) {
     handleApiError(e);
   } finally {
@@ -1139,6 +1141,40 @@ function onReviewClick(e) {
 }
 
 /* ---------- Generate ---------- */
+/* Everything the writing step needs. Only the reviewed clinical data goes to the AI;
+   name and the dates typed on step 1 never leave this device. */
+function genPayload() {
+  const d = state.data;
+  const P = state.patient;
+  const { unclear_items, _dismissed, ...rest } = d; // "_" fields are app-only, never sent to the AI
+  rest.medications = (rest.medications || []).map(({ _manual, ...m }) => m);
+  const caseData = { ...rest, age: d.age || "", sex: d.sex || "", admission_date: d.admission_date || "", discharge_date: d.discharge_date || "",
+    chronology: buildChronology(d).text }; // date-ordered backbone for the story
+  const tpl = currentTemplate();
+  return {
+    length: P.length || "standard",
+    case: caseData,
+    template: { title: tpl.title, department: tpl.department, sections: tpl.sections },
+    options: { outcome: P.outcome || "discharged", followup: P.followup || "", monitor: P.monitor || "", extra: P.extra || "", dept: deptName() },
+  };
+}
+
+/* Background draft: start writing while the doctor reviews. Used only if nothing was changed
+   since; otherwise a fresh draft is written. At most 2 per patient to keep cost down. */
+let pre = null;
+let preCount = 0;
+function prefetchDraft() {
+  if (!state.data || preCount >= 2) return;
+  let body;
+  try { body = genPayload(); } catch { return; }
+  const key = JSON.stringify(body);
+  if (pre && pre.key === key) return;
+  preCount++;
+  const promise = api("generate", { case_id: state.caseId || newCaseId(), ...body });
+  promise.catch(() => {}); // a failed background draft just means writing normally later
+  pre = { key, promise };
+}
+
 async function generate() {
   const d = state.data;
   if (!d) return;
@@ -1150,23 +1186,17 @@ async function generate() {
   const P = state.patient;
   if ((P.outcome || "discharged") === "discharged" && !d.medications.some((m) => m.on_discharge)
     && !confirm('No drugs are ticked "On discharge", so the discharge medication list will be empty. Write the summary anyway?')) return;
-  const { unclear_items, _dismissed, ...rest } = d; // "_" fields are app-only, never sent to the AI
-  // Only the reviewed clinical data goes to the AI. Name and the dates typed on step 1 never leave this device.
-  rest.medications = (rest.medications || []).map(({ _manual, ...m }) => m);
-  const caseData = { ...rest, age: d.age || "", sex: d.sex || "", admission_date: d.admission_date || "", discharge_date: d.discharge_date || "",
-    chronology: buildChronology(d).text }; // date-ordered backbone for the story
-  const tpl = currentTemplate();
-  const template = { title: tpl.title, department: tpl.department, sections: tpl.sections };
+  const body = genPayload();
+  const template = body.template;
+  const key = JSON.stringify(body);
   busyStages([["Preparing the case story", 2], ["Writing history and course", 8], ["Writing advice and follow-up", 5],
     ["Checking facts against your data", 3], ["Almost done", 20]]);
   try {
-    const r = await api("generate", {
-      case_id: state.caseId || newCaseId(),
-      length: state.patient.length || "standard",
-      case: caseData,
-      template,
-      options: { outcome: P.outcome || "discharged", followup: P.followup || "", monitor: P.monitor || "", extra: P.extra || "", dept: deptName() },
-    });
+    // If the draft written in the background was made from exactly this data, use it (instant).
+    let r = null;
+    if (pre && pre.key === key) r = await pre.promise.catch(() => null);
+    pre = null;
+    if (!r) r = await api("generate", { case_id: state.caseId || newCaseId(), ...body });
     state.draft = r.data;
     state.draftTemplate = template;
     state.docHtml = null;
@@ -1466,6 +1496,8 @@ function bind() {
   });
   $("#finalVerify").addEventListener("change", (e) => setVerified(e.target.checked));
   $("#rxReview").addEventListener("click", onRxClick);
+  // Ticking "I have checked the medications" means review is nearly done: refresh the background draft.
+  $("#medConfirm").addEventListener("change", (e) => { if (e.target.checked) prefetchDraft(); });
   $("#attention").addEventListener("click", (e) => {
     const t = e.target.closest("[data-usetpl]");
     if (t) { setTemplate(t.dataset.usetpl); renderAttention(); renderOptsSummary(); toast(`Using the ${builtinById(t.dataset.usetpl).name} format.`); return; }
