@@ -6,8 +6,8 @@
   <meta name="robots" content="noindex, nofollow" />
   <title>Admin — Discharge AI</title>
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=20" />
-  <link rel="stylesheet" href="admin.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=21" />
+  <link rel="stylesheet" href="admin.css?v=21" />
 </head>
 <body>
   <header class="topbar">
@@ -72,6 +72,9 @@
         <div class="tbl-wrap"><table class="data" id="userCostTable"></table></div>
         <div class="actions tight"><button class="btn" id="moreUserCosts" hidden>Load more</button></div>
 
+        <h3 class="kicker">Doctor feedback</h3>
+        <div id="feedback" class="err-list"></div>
+
         <h3 class="kicker">Recent errors</h3>
         <div id="errors" class="err-list"></div>
       </section>
@@ -95,6 +98,6 @@
   <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Loading…</p></div>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js?v=20"></script>
+  <script type="module" src="admin.js?v=21"></script>
 </body>
 </html>

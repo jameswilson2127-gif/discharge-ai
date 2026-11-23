@@ -97,6 +97,9 @@ Deno.serve(async (req: Request) => {
           p_offset: Math.max(Number(b.offset) || 0, 0),
         }));
 
+      case "feedback":
+        return json(await rpc("admin_feedback", { p_limit: Math.min(Math.max(Number(b.limit) || 50, 1), 200) }));
+
       case "daily":
         return json(await rpc("admin_daily", { p_days: Math.min(Math.max(Number(b.days) || 30, 1), 90) }));
 

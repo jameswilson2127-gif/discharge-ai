@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=20";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=20";
-import { buildChronology } from "./chrono.js?v=20";
-import { labPanel, consistencyIssues } from "./checks.js?v=20";
+import { CONFIG } from "./config.js?v=21";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=21";
+import { buildChronology } from "./chrono.js?v=21";
+import { labPanel, consistencyIssues } from "./checks.js?v=21";
 
 /* ============================================================
    Setup & helpers
@@ -629,6 +629,7 @@ function showStep(step, { keepEditor = false } = {}) {
   for (const s of ["patient", "photos", "review", "final", "templates"]) $(`#step-${s}`).hidden = s !== step;
   $("#stepper").hidden = step === "patient" || step === "templates";
   if (step === "patient") renderHome();
+  if (step === "final") renderAfterDoc();
   if (step === "photos") { renderOptsSummary(); $("#caseOptions").open = !!store.get(LS, "dai_opts_open", false); }
   $$("#stepper button").forEach((b) => {
     b.classList.toggle("on", b.dataset.step === step);
@@ -1216,6 +1217,7 @@ async function generate() {
     pre = null;
     if (!r) r = await api("generate", { case_id: state.caseId || newCaseId(), ...body });
     state.draft = r.data;
+    state.fbSent = false;
     state.draftTemplate = template;
     state.docHtml = null;
     $("#optTreatment").checked = (P.outcome || "discharged") !== "discharged";
@@ -1312,6 +1314,29 @@ function waLink() {
 function renderWhatsApp() {
   const href = waLink();
   for (const id of ["#waHome", "#waFoot", "#waMenu"]) { const el = $(id); if (el) { el.hidden = !href; if (href) el.href = href; } }
+  const g = CONFIG.WHATSAPP_GROUP_URL || "";
+  for (const id of ["#waGroupHome", "#waGroupFoot", "#groupJoin"]) { const el = $(id); if (el) { el.hidden = !g; if (g) el.href = g; } }
+}
+/* After a summary: quick feedback + (until joined/dismissed) the WhatsApp group invite. */
+let fbRating = 0;
+function renderAfterDoc() {
+  fbRating = 0;
+  $("#fbMore").hidden = true; $("#fbThanks").hidden = true; $("#fbComment").value = "";
+  $$("#fbBox .fb-btn").forEach((b) => { b.classList.remove("on"); b.disabled = false; });
+  $("#fbBox").hidden = !!state.fbSent;
+  $("#groupCard").hidden = !CONFIG.WHATSAPP_GROUP_URL || !!store.get(LS, "dai_group_done", false);
+}
+async function sendFeedback() {
+  const comment = $("#fbComment").value.trim().slice(0, 600);
+  try {
+    const { error } = await sb.from("feedback").insert({ rating: fbRating, comment: comment || null, template: (currentTemplate().name || "").slice(0, 80) });
+    if (error) throw error;
+    state.fbSent = true;
+    $("#fbMore").hidden = true; $("#fbThanks").hidden = false;
+    $$("#fbBox .fb-btn").forEach((b) => (b.disabled = true));
+  } catch (e) {
+    console.warn(e); toast("Could not send feedback. Please try again.", true);
+  }
 }
 function renderOptsSummary() {
   const tpl = currentTemplate();
@@ -1514,6 +1539,20 @@ function bind() {
   });
   $("#finalVerify").addEventListener("change", (e) => setVerified(e.target.checked));
   $("#rxReview").addEventListener("click", onRxClick);
+  $("#fbBox").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rate]");
+    if (!b || b.disabled) return;
+    fbRating = Number(b.dataset.rate);
+    $$("#fbBox .fb-btn").forEach((x) => x.classList.toggle("on", x === b));
+    $("#fbMore").hidden = false;
+    $("#fbComment").placeholder = fbRating > 0
+      ? "Anything you liked or would change? (optional) Please don't type patient names or details."
+      : "What should be better? (optional) Please don't type patient names or details.";
+    if (fbRating > 0 && !$("#fbComment").value) $("#fbComment").focus();
+  });
+  $("#fbSend").addEventListener("click", sendFeedback);
+  $("#groupClose").addEventListener("click", () => { store.set(LS, "dai_group_done", true); $("#groupCard").hidden = true; });
+  $("#groupJoin").addEventListener("click", () => { store.set(LS, "dai_group_done", true); setTimeout(() => ($("#groupCard").hidden = true), 500); });
   // Ticking "I have checked the medications" means review is nearly done: refresh the background draft.
   $("#medConfirm").addEventListener("change", (e) => { if (e.target.checked) prefetchDraft(); });
   $("#attention").addEventListener("click", (e) => {

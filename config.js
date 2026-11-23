@@ -24,6 +24,8 @@ export const CONFIG = {
   CONTACT_EMAIL: "jameswilson2127@gmail.com",
   // WhatsApp support number with country code, digits only, e.g. "919876543210". Empty = button hidden.
   WHATSAPP_NUMBER: "",
+  // Doctors' WhatsApp group (feedback & updates). Leave "" to hide the invite.
+  WHATSAPP_GROUP_URL: "https://chat.whatsapp.com/GU5N0wuCDWJ2kRqkiZ9u1S",
   // City whose courts handle disputes, e.g. "New Delhi". Leave empty for "courts in India".
   JURISDICTION_CITY: "",
   // Bump this (and the TERMS_VERSION secret on Supabase) whenever you change the Terms/Privacy text;

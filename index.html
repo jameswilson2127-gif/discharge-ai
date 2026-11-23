@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=20" />
+  <link rel="stylesheet" href="styles.css?v=21" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -138,6 +138,7 @@
       <div class="home-links">
         <button class="btn" id="manageTplBtn">Summary templates</button>
         <a class="btn wa-btn" id="waHome" target="_blank" rel="noopener" hidden>WhatsApp support</a>
+        <a class="btn wa-btn" id="waGroupHome" target="_blank" rel="noopener" hidden>👥 Join the doctors' WhatsApp group</a>
       </div>
     </section>
 
@@ -249,6 +250,26 @@
         </div>
       </div>
       <article id="doc" class="doc" contenteditable="true" spellcheck="true"></article>
+      <div class="no-print after-doc">
+        <div id="fbBox" class="fb-box">
+          <b>How was this summary?</b>
+          <div class="fb-row">
+            <button class="btn fb-btn" data-rate="1" aria-label="Good">👍 Good</button>
+            <button class="btn fb-btn" data-rate="-1" aria-label="Needs work">👎 Needs work</button>
+          </div>
+          <div id="fbMore" hidden>
+            <textarea id="fbComment" rows="3" maxlength="600" placeholder="What should be better? (optional) Please don't type patient names or details."></textarea>
+            <button class="btn primary small" id="fbSend">Send feedback</button>
+          </div>
+          <p id="fbThanks" class="hint" hidden>Thank you! Every message is read.</p>
+        </div>
+        <div id="groupCard" class="group-card" hidden>
+          <button class="x" id="groupClose" aria-label="Close">×</button>
+          <b>👥 Join our doctors' WhatsApp group</b>
+          <p>Tips, new features, and a direct line to tell us what to improve. Please never post patient photos, names or summaries in the group.</p>
+          <a class="btn wa-btn" id="groupJoin" target="_blank" rel="noopener">Join on WhatsApp</a>
+        </div>
+      </div>
     </section>
 
     <!-- TEMPLATES -->
@@ -301,7 +322,7 @@
     </section>
 
     <footer class="app-footer no-print">
-      <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a><a id="waFoot" target="_blank" rel="noopener" hidden> · WhatsApp support</a> · AI drafts must be verified by the treating doctor.
+      <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a><a id="waFoot" target="_blank" rel="noopener" hidden> · WhatsApp support</a><a id="waGroupFoot" target="_blank" rel="noopener" hidden> · Doctors' WhatsApp group</a> · AI drafts must be verified by the treating doctor.
     </footer>
   </main>
 
@@ -336,6 +357,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=20"></script>
+  <script type="module" src="app.js?v=21"></script>
 </body>
 </html>

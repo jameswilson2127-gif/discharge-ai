@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=20";
-import { esc } from "./doc.js?v=20";
+import { CONFIG } from "./config.js?v=21";
+import { esc } from "./doc.js?v=21";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);
@@ -176,6 +176,16 @@ async function loadUsage() {
   $("#errors").innerHTML = (r.recent_errors || []).length
     ? r.recent_errors.map((e) => `<div class="err"><b>${esc(e.kind)}</b> · ${new Date(e.at).toLocaleString("en-IN")} · ${esc(e.email || "")}<br><code>${esc(e.error || "")}</code></div>`).join("")
     : `<p class="hint">No errors. 🎉</p>`;
+  loadFeedback();
+}
+async function loadFeedback() {
+  try {
+    const f = await api("feedback", { limit: 50 });
+    const rows = f.rows || [];
+    $("#feedback").innerHTML = `<p class="hint">👍 ${int(f.up)} · 👎 ${int(f.down)} in total. Latest 50:</p>` + (rows.length
+      ? rows.map((x) => `<div class="err" style="border-left-color:${x.rating > 0 ? "var(--accent-2)" : "var(--danger)"}"><b>${x.rating > 0 ? "👍" : "👎"}</b> · ${new Date(x.at).toLocaleString("en-IN")} · ${esc(x.email || "")}${x.template ? ` · <small>${esc(x.template)}</small>` : ""}${x.comment ? `<br>${esc(x.comment)}` : ""}</div>`).join("")
+      : `<p class="hint">No feedback yet.</p>`);
+  } catch (e) { $("#feedback").innerHTML = `<p class="hint">Could not load feedback: ${esc(e.message)}</p>`; }
 }
 
 /* ---------- cost per discharge / per user ---------- */

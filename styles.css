@@ -440,3 +440,15 @@ mark { background: var(--warn-bg); padding: 0 2px; }
   .doc h2 { break-after: avoid; }
   .doc ol li, .doc p { break-inside: avoid-page; }
 }
+
+/* after-summary: feedback + WhatsApp group invite */
+.after-doc { max-width: 820px; margin: 18px auto 0; display: grid; gap: 12px; }
+.fb-box, .group-card { background: #fff; border: 1px solid var(--line-2); border-radius: 14px; padding: 14px 16px; }
+.fb-row { display: flex; gap: 8px; margin: 10px 0 4px; flex-wrap: wrap; }
+.fb-btn.on { background: var(--accent-soft); border-color: var(--accent-2); color: var(--accent); }
+#fbMore { display: grid; gap: 8px; margin-top: 8px; }
+#fbMore textarea { width: 100%; box-sizing: border-box; }
+#fbMore .btn { justify-self: start; }
+.group-card { position: relative; background: #f1faf5; border-color: #a9dcbf; }
+.group-card p { margin: 6px 0 10px; font-size: 14px; color: var(--muted, #5b6b68); }
+.group-card .x { position: absolute; top: 6px; right: 10px; border: 0; background: none; font-size: 22px; color: #6b7b78; cursor: pointer; }
