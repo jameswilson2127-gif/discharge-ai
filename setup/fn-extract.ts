@@ -392,6 +392,9 @@ Deno.serve(async (req: Request) => {
     await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
     for (let i = 0; i < units; i++) await refund();
     console.error(e);
+    if (/^Gemini error: (429|5\d\d)/.test(String((e as Error)?.message ?? ""))) {
+      return json({ error: "Google's AI is busy right now.", code: "busy" }, 503);
+    }
     return json({ error: "Could not read the photos. Please try again." }, 502);
   }
 });

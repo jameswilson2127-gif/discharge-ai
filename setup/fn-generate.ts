@@ -356,6 +356,9 @@ Deno.serve(async (req: Request) => {
     await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, length, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
     await rpc("refund_quota", { p_user: user.id, p_kind: "generate" }).catch(() => {});
     console.error(e);
+    if (/^Gemini error: (429|5\d\d)/.test(String((e as Error)?.message ?? ""))) {
+      return json({ error: "Google's AI is busy right now.", code: "busy" }, 503);
+    }
     return json({ error: "Could not write the summary. Please try again." }, 502);
   }
 });

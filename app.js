@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=18";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=18";
-import { buildChronology } from "./chrono.js?v=18";
-import { labPanel, consistencyIssues } from "./checks.js?v=18";
+import { CONFIG } from "./config.js?v=19";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=19";
+import { buildChronology } from "./chrono.js?v=19";
+import { labPanel, consistencyIssues } from "./checks.js?v=19";
 
 /* ============================================================
    Setup & helpers
@@ -277,7 +277,25 @@ async function signIn() {
 // The server gives up after ~150 s, so never leave the doctor watching a spinner longer than that.
 const API_TIMEOUT = { extract: 140000, template: 140000 };
 const NET_MSG = "The upload didn't reach our server - the mobile network seems slow or dropped. Please check your connection and tap the button again. A failed read is not counted against your allowance. If it keeps happening, try Wi-Fi.";
-async function api(fn, body) {
+// When Google sheds traffic ("high demand"), wait and try again by itself instead of failing.
+// Every busy attempt is refunded on the server, so the doctor is never charged for it.
+const BUSY_WAITS = [8, 15, 25, 40]; // seconds between automatic retries (~1.5 min in total)
+async function api(fn, body, { quiet = false } = {}) {
+  for (let i = 0; ; i++) {
+    try {
+      return await apiOnce(fn, body);
+    } catch (e) {
+      if (!e.busy || i >= BUSY_WAITS.length || (quiet && i >= 1)) {
+        if (e.busy) e.message = "Google's AI is overloaded right now. Nothing was charged. Please try again in a few minutes.";
+        throw e;
+      }
+      const wait = BUSY_WAITS[i];
+      if (!quiet) toast(`Google's AI is busy - retrying automatically in ${wait} s (attempt ${i + 2} of ${BUSY_WAITS.length + 1}). Nothing is charged for busy attempts.`, false, wait * 1000);
+      await new Promise((ok) => setTimeout(ok, wait * 1000));
+    }
+  }
+}
+async function apiOnce(fn, body) {
   const { data: s } = await sb.auth.getSession();
   if (!s.session) throw Object.assign(new Error("Please sign in again."), { status: 401 });
   const payload = JSON.stringify(body);
@@ -308,7 +326,7 @@ async function api(fn, body) {
   }
   let out = {};
   try { out = await r.json(); } catch { /* non-JSON */ }
-  if (!r.ok) throw Object.assign(new Error(out.error || `Request failed (${r.status})`), { status: r.status });
+  if (!r.ok) throw Object.assign(new Error(out.error || `Request failed (${r.status})`), { status: r.status, busy: out.code === "busy" });
   return out;
 }
 
@@ -1170,7 +1188,7 @@ function prefetchDraft() {
   const key = JSON.stringify(body);
   if (pre && pre.key === key) return;
   preCount++;
-  const promise = api("generate", { case_id: state.caseId || newCaseId(), ...body });
+  const promise = api("generate", { case_id: state.caseId || newCaseId(), ...body }, { quiet: true });
   promise.catch(() => {}); // a failed background draft just means writing normally later
   pre = { key, promise };
 }
