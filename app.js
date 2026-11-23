@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=16";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=16";
-import { buildChronology } from "./chrono.js?v=16";
-import { labPanel, consistencyIssues } from "./checks.js?v=16";
+import { CONFIG } from "./config.js?v=17";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=17";
+import { buildChronology } from "./chrono.js?v=17";
+import { labPanel, consistencyIssues } from "./checks.js?v=17";
 
 /* ============================================================
    Setup & helpers
@@ -274,18 +274,38 @@ async function signIn() {
 /* ============================================================
    API
    ============================================================ */
+// The server gives up after ~150 s, so never leave the doctor watching a spinner longer than that.
+const API_TIMEOUT = { extract: 140000, template: 140000 };
+const NET_MSG = "The upload didn't reach our server - the mobile network seems slow or dropped. Please check your connection and tap the button again. A failed read is not counted against your allowance. If it keeps happening, try Wi-Fi.";
 async function api(fn, body) {
   const { data: s } = await sb.auth.getSession();
   if (!s.session) throw Object.assign(new Error("Please sign in again."), { status: 401 });
-  const r = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/${fn}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      Authorization: `Bearer ${s.session.access_token}`,
-      apikey: CONFIG.SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(body),
-  });
+  const payload = JSON.stringify(body);
+  const send = async () => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), API_TIMEOUT[fn] || 90000);
+    try {
+      return await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/${fn}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${s.session.access_token}`,
+          apikey: CONFIG.SUPABASE_ANON_KEY,
+        },
+        body: payload,
+        signal: ctl.signal,
+      });
+    } finally { clearTimeout(timer); }
+  };
+  let r;
+  try {
+    r = await send();
+  } catch (e) {
+    if (e.name === "AbortError") throw Object.assign(new Error(NET_MSG), { status: 0, network: true });
+    // A dropped connection fails fast: try once more before giving up.
+    try { await new Promise((ok) => setTimeout(ok, 1500)); r = await send(); }
+    catch { throw Object.assign(new Error(NET_MSG), { status: 0, network: true }); }
+  }
   let out = {};
   try { out = await r.json(); } catch { /* non-JSON */ }
   if (!r.ok) throw Object.assign(new Error(out.error || `Request failed (${r.status})`), { status: r.status });
