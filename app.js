@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=22";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=22";
-import { buildChronology } from "./chrono.js?v=22";
-import { labPanel, consistencyIssues } from "./checks.js?v=22";
+import { CONFIG } from "./config.js?v=23";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=23";
+import { buildChronology } from "./chrono.js?v=23";
+import { labPanel, consistencyIssues } from "./checks.js?v=23";
 
 /* ============================================================
    Setup & helpers
@@ -1332,11 +1332,11 @@ let groupTimer = null;
 function maybeShowGroupInvite() {
   clearTimeout(groupTimer);
   hideGroupInvite();
-  if (!CONFIG.WHATSAPP_GROUP_URL || store.get(LS, "dai_group_done", false)) return;
-  const n = Number(store.get(LS, "dai_summaries_seen", 0)) + 1;
-  store.set(LS, "dai_summaries_seen", n);
-  const dismissed = Number(store.get(LS, "dai_group_dismissed", 0));
-  const next = Number(store.get(LS, "dai_group_next", 1));
+  if (!CONFIG.WHATSAPP_GROUP_URL || store.get(LS, "dai_grp2_joined", false)) return;
+  const n = Number(store.get(LS, "dai_grp2_seen", 0)) + 1;
+  store.set(LS, "dai_grp2_seen", n);
+  const dismissed = Number(store.get(LS, "dai_grp2_dismissed", 0));
+  const next = Number(store.get(LS, "dai_grp2_next", 1));
   if (dismissed >= 3 || n < next) return;
   groupTimer = setTimeout(() => {
     if (state.step !== "final") return;
@@ -1352,8 +1352,8 @@ function hideGroupInvite() {
   setTimeout(() => { if (!el.classList.contains("show")) el.hidden = true; }, 300);
 }
 function laterGroupInvite() {
-  store.set(LS, "dai_group_dismissed", Number(store.get(LS, "dai_group_dismissed", 0)) + 1);
-  store.set(LS, "dai_group_next", Number(store.get(LS, "dai_summaries_seen", 0)) + 5);
+  store.set(LS, "dai_grp2_dismissed", Number(store.get(LS, "dai_grp2_dismissed", 0)) + 1);
+  store.set(LS, "dai_grp2_next", Number(store.get(LS, "dai_grp2_seen", 0)) + 5);
   hideGroupInvite();
 }
 async function sendFeedback() {
@@ -1583,7 +1583,7 @@ function bind() {
   $("#fbSend").addEventListener("click", sendFeedback);
   $("#groupClose").addEventListener("click", laterGroupInvite);
   $("#groupLater").addEventListener("click", laterGroupInvite);
-  $("#groupJoin").addEventListener("click", () => { store.set(LS, "dai_group_done", true); setTimeout(hideGroupInvite, 400); });
+  $("#groupJoin").addEventListener("click", () => { store.set(LS, "dai_grp2_joined", true); setTimeout(hideGroupInvite, 400); });
   // Ticking "I have checked the medications" means review is nearly done: refresh the background draft.
   $("#medConfirm").addEventListener("change", (e) => { if (e.target.checked) prefetchDraft(); });
   $("#attention").addEventListener("click", (e) => {
