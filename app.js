@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=25";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=25";
-import { buildChronology } from "./chrono.js?v=25";
-import { labPanel, consistencyIssues } from "./checks.js?v=25";
+import { CONFIG } from "./config.js?v=26";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=26";
+import { buildChronology } from "./chrono.js?v=26";
+import { labPanel, consistencyIssues } from "./checks.js?v=26";
 
 /* ============================================================
    Setup & helpers
@@ -81,7 +81,7 @@ const saveCase = debounce(() => {
   store.set(SS, CASE_KEY, {
     savedAt: Date.now(),
     caseId: state.caseId,
-    readLength: state.readLength,
+    readLength: state.readLength, readAt: state.readAt, readSig: state.readSig,
     step: state.step === "templates" ? "patient" : state.step,
     patient: state.patient, data: state.data, draft: state.draft, draftTemplate: state.draftTemplate, docHtml: state.docHtml,
   });
@@ -95,6 +95,7 @@ function restoreCase() {
   Object.assign(state.patient, c.patient || {});
   if (c.caseId) state.caseId = c.caseId;
   if (c.readLength) state.readLength = c.readLength;
+  if (c.readAt) { state.readAt = c.readAt; state.readSig = c.readSig; }
   for (const k of LEGACY_ID_FIELDS) delete state.patient[k];
   state.data = c.data || null;
   state.draft = c.draft || null;
@@ -867,9 +868,44 @@ function normalise(d) {
   return d;
 }
 
+// Cheap fingerprint of the current pages (count, order, rotation/masking change the data URL).
+const photoSig = () => state.photos.map((p) => `${p.url.length}:${p.url.slice(-24)}`).join("|");
+function minsAgo(t) {
+  const m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? "less than a minute ago" : m === 1 ? "1 minute ago" : m < 120 ? `${m} minutes ago` : "earlier";
+}
+/* Small in-page dialog (instead of confirm()) with a clear primary action. Resolves "primary" | "secondary" | null. */
+function askChoice({ title, text, primary, secondary, danger = false }) {
+  return new Promise((resolve) => {
+    const box = document.createElement("div");
+    box.className = "ask-wrap no-print";
+    box.innerHTML = `<div class="ask" role="dialog" aria-modal="true"><b>${esc(title)}</b><p>${esc(text)}</p>
+      <div class="ask-actions"><button class="btn primary" data-a="primary">${esc(primary)}</button>
+      <button class="btn${danger ? " ask-danger" : ""}" data-a="secondary">${esc(secondary)}</button></div></div>`;
+    const done = (v) => { box.remove(); resolve(v); };
+    box.addEventListener("click", (e) => { const a = e.target.closest("[data-a]"); if (a) done(a.dataset.a); else if (e.target === box) done(null); });
+    document.body.appendChild(box);
+    box.querySelector("[data-a=primary]").focus();
+  });
+}
+
 async function extract() {
   if (!state.photos.length) return toast("Add at least one photo first.", true);
-  if (state.data && !confirm(`Reading the pages again replaces the data you reviewed and uses ${(state.patient.length || "standard") === "detailed" ? "2 more patients" : "another patient"} from your monthly allowance. Continue?`)) return;
+  if (state.data) {
+    // Re-reading is a full new (paid) AI read. Steer doctors back to Review unless pages really changed.
+    const cost = (state.patient.length || "standard") === "detailed" ? "2 more patients" : "1 more patient";
+    const changed = state.readSig && photoSig() !== state.readSig;
+    const ago = state.readAt ? minsAgo(state.readAt) : "";
+    const choice = await askChoice(changed
+      ? { title: "Pages changed: read again?",
+          text: `You added, removed or rotated pages since they were read${ago ? ` (${ago})` : ""}. Reading again uses ${cost} from your monthly allowance and replaces the data you reviewed.`,
+          primary: "Read again", secondary: "← Go to Review" }
+      : { title: "These pages are already read",
+          text: `They were read${ago ? ` ${ago}` : " already"}. Reading the same pages again uses ${cost} from your monthly allowance and replaces the data you reviewed. Corrections can be made on the Review screen instead.`,
+          primary: "← Go to Review", secondary: "Read again anyway", danger: true });
+    const readAgain = changed ? choice === "primary" : choice === "secondary";
+    if (!readAgain) { if (choice) showStep("review"); return; }
+  }
   const pending = state.photos.filter((p) => !idDone(p)).length;
   if (pending) {
     renderPhotos();
@@ -893,6 +929,7 @@ async function extract() {
     state.data = normalise(r.data);
     state.draft = null; state.draftTemplate = null; state.docHtml = null;
     state.readLength = length; // how carefully the photos were read
+    state.readAt = Date.now(); state.readSig = photoSig();
     const P = state.patient;
     if (/^(male|female)$/i.test(state.data.sex || "")) state.data.sex = state.data.sex[0].toUpperCase() + state.data.sex.slice(1).toLowerCase();
     if (!P.doa && state.data.admission_date) P.doa = state.data.admission_date;
@@ -1444,7 +1481,7 @@ function clearCase() {
   if (SS) store.del(SS, CASE_KEY);
   fillPatientForm(); renderPhotos(); $("#doc").innerHTML = "";
   setVerified(false);
-  state.caseId = null; state.readLength = null;
+  state.caseId = null; state.readLength = null; state.readAt = null; state.readSig = null;
   renderLength(); // next patient gets a fresh id
 }
 
