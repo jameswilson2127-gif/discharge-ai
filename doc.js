@@ -12,31 +12,336 @@ export const KINDS = {
   signature:             { label: "Signature line",                      ai: false, fields: true,  fieldsHint: "Signatories, comma-separated" },
 };
 
-export const DEFAULT_TEMPLATE = {
+/* ---------- Built-in department templates ----------
+   Guidance is written the way residents actually write summaries in Indian
+   teaching hospitals: short sentences, usual ward shorthand, stock phrases.
+   [square brackets] = fill from the case; ___ = value not in the notes. */
+const PT_FIELDS = ["Name", "Age/Sex", "UHID", "IPD No.", "Date of Admission", "Date of Discharge"];
+const ptSec = (fields = PT_FIELDS) => ({ heading: "Patient Details", kind: "patient_details", guidance: "", fields: [...fields] });
+const txSec = () => ({ heading: "Treatment Given", kind: "treatment_given", guidance: "", optional: true });
+const medSec = (lead = "Discharged on the following medications:") => ({ heading: "Discharge Medications", kind: "discharge_medications", guidance: lead });
+const signSec = () => ({ heading: "", kind: "signature", guidance: "", fields: ["Junior Resident", "Senior Resident", "Consultant"] });
+const ADVICE_RULES = `Write one instruction per line (single line breaks), numbered, short, the way advice is written on a discharge card. Only what the notes document: never add diet, salt or fluid restriction, exercise, lifestyle or counselling lines on your own. Mention every drug kept on hold, every documented follow-up and every awaited report.`;
+const COURSE_RULE = `Cover every dated note in order. Compare repeat reports with the earlier value ("creatinine came down from ___ to ___ mg/dL"). Name each drug added, stopped or changed and why, if written. Only write "improved" if the notes say so. Usually 3 to 6 short paragraphs; a long stay can be grouped into phases.`;
+
+const GM = {
   id: "default",
-  name: "General Medicine (built-in)",
+  name: "General Medicine",
   title: "DISCHARGE SUMMARY",
   department: "Department of General Medicine",
   sections: [
-    { heading: "Patient Details", kind: "patient_details", guidance: "",
-      fields: ["Name", "Age/Sex", "UHID", "IPD No.", "Date of Admission", "Date of Discharge"] },
-    { heading: "Final Diagnosis", kind: "diagnosis",
-      guidance: "Primary diagnosis with associated comorbidities and complications, if any. Primary diagnosis first, then complications, then comorbidities/habits." },
+    ptSec(),
+    { heading: "Final Diagnosis", kind: "diagnosis", guidance:
+`As written on the file: main diagnosis first (with cause and severity if documented), then complications, then comorbidities with duration (e.g. "[Type 2 DM] - [duration]").` },
     { heading: "Clinical Summary", kind: "narrative", guidance:
-`One continuous story in date order, in these paragraphs:
-1. Background, oldest first: "A [age]-year-old [male/female], known case of [comorbidities with duration], on [long-term medications]. [Earlier illnesses, previous hospitalisations, procedures and their outcomes, in date order.] [Investigations done before this admission, with dates and key findings.]" Omit sentences with nothing to say.
-2. Presenting illness: "The patient presented to the [department] with complaints of [chief complaints with duration]. The patient was apparently well [duration] prior to admission, following which he/she developed [symptoms in the order they began, progression, associated symptoms, treatment taken before admission]. There was no history of [relevant negatives]."
-3. "On admission, the patient was [general condition and sensorium]. His/her vitals were as follows: blood pressure ___ mmHg, pulse rate ___/min, respiratory rate ___/min, temperature ___°C and SpO2 ___% on [room air/oxygen]. General examination revealed [relevant findings]. On systemic examination, [important positive and negative findings under CVS, respiratory system, abdomen and CNS]." Include GCS if given.
-4. "Initial investigations revealed [important haematological and biochemical parameters]. Renal function tests showed [findings], liver function tests revealed [findings], and serum electrolytes were [findings]. Relevant imaging, including [USG/CT/MRI/X-ray], demonstrated [findings]. Other investigations, including [ECG, echocardiography, cultures, serology, etc.], were suggestive of [findings]. Based on the clinical presentation, examination and investigation profile, a diagnosis of [final diagnosis] was made." Skip clauses for tests not done.
-5. "The patient was managed with appropriate medical treatment in the form of [specific medications, doses where relevant, supportive treatment, oxygen, IV fluids, antibiotics, steroids, blood products, procedures]. During the hospital stay, the patient was closely monitored clinically and through serial laboratory investigations. [Chronological course: response to treatment, significant changes in investigations, complications, specialist consultations, additional interventions with dates.] The patient showed [clinical/biochemical] improvement following the instituted treatment." (Only claim improvement if documented. The chronological course must be DETAILED: cover every dated note in order with vitals, investigation trends, treatment changes by drug name, procedures, consults and complications — usually 3–6 paragraphs.)
-6. End-of-stay paragraph per OUTCOME. For discharge: "At the time of discharge, the patient was [conscious and oriented/haemodynamically stable/afebrile], with blood pressure ___ mmHg, pulse rate ___/min, respiratory rate ___/min and SpO2 ___% on [room air/oxygen]. The patient was [tolerating oral feeds/ambulating independently/maintaining adequate urine output, as applicable]. In view of the clinical improvement and stable condition, the patient is being discharged with the following medications and advice."` },
-    { heading: "Treatment Given", kind: "treatment_given", guidance: "", optional: true },
-    { heading: "Discharge Medications", kind: "discharge_medications", guidance: "The patient is being discharged on the following medications:" },
-    { heading: "Discharge Advice and Follow-up", kind: "advice", guidance:
-`"The patient and attendants have been counselled regarding the disease and medication compliance. They have been advised to [specific documented instructions: complete/continue named drugs with duration, eye/wound care, drugs kept on hold, diet only if documented] and monitor [parameters only if documented]. The patient has been advised to follow up in the [department] OPD after [interval] with [relevant investigation reports]. They have also been advised to report to the nearest emergency department in case of fever, worsening symptoms, breathlessness, chest pain, altered sensorium, seizures, reduced urine output or any other concerning symptoms." Tailor the warning symptoms to this case. Mention every documented follow-up (each OPD, interval, reports to bring, pending results). Never add generic advice (diet, lifestyle, body weight) that the notes do not mention.` },
-    { heading: "", kind: "signature", guidance: "", fields: ["Junior Resident", "Senior Resident", "Consultant"] },
+`Paragraphs in this order. Leave out any line that has nothing documented.
+
+1. Background: "[Age] yr old [male/female], k/c/o [comorbidities with duration] on [regular medications]. [Old illnesses, earlier admissions and procedures, oldest first, with month/year.] [Reports done before this admission, with date and main finding.]"
+
+2. Present illness: "Presented with c/o [complaints with duration]. Pt was apparently alright [duration] back, when he/she developed [first symptom], followed by [next symptoms in the order they came, how they progressed]. [Treatment taken outside / referred from, if written.] No h/o [relevant negatives that are documented]."
+
+3. On admission: "On admission, pt was [conscious, oriented / drowsy], [afebrile / febrile]. BP ___ mmHg, PR ___/min, RR ___/min, temp ___, SpO2 ___% on [RA / O2 at ___ L/min]. GE: [pallor, icterus, cyanosis, clubbing, lymphadenopathy, oedema - as documented]. S/E: CVS - [ ]; RS - [ ]; P/A - [ ]; CNS - [ ]." Add GCS if charted.
+
+4. Workup: "Investigations revealed [Hb, TLC, platelets], [RFT], [LFT], [electrolytes], [other bloods]. [Imaging] showed [findings]. [ECG / ECHO / cultures / serology] - [findings]. With the above clinical picture and reports, pt was diagnosed as a case of [final diagnosis]."
+
+5. Hospital course: "Pt was started on [drugs with doses, IV fluids, O2, blood products]." Then day by day or phase by phase: how the pt was doing, vitals, repeat reports, drug changes, procedures, transfusions, referrals and what they advised, complications and how they were handled. ${COURSE_RULE}
+
+6. End of stay as per OUTCOME. For discharge: "At the time of discharge, pt is [conscious, oriented, afebrile], hemodynamically stable. BP ___ mmHg, PR ___/min, SpO2 ___% on RA. [Taking orally / ambulatory / passing urine adequately - only if documented.] Pt is being discharged in stable condition with the following advice."` },
+    txSec(),
+    medSec(),
+    { heading: "Advice on Discharge", kind: "advice", guidance:
+`Like this:
+1. Continue medications as advised. [Duration of named drugs if documented: "Tab ___ to be continued for ___ days".]
+2. [Drug] on hold till [review / condition]. (one line for each held drug, with reason if written)
+3. [Test] after [interval]. (only monitoring that is documented)
+4. Follow up in [department] OPD after [interval / on date] with reports. ("[Test] report awaited - to be collected and shown in OPD" for each pending report.)
+5. Review SOS in emergency in case of [4 to 6 warning symptoms that fit this case].
+${ADVICE_RULES}` },
+    signSec(),
   ],
 };
+
+const ONCO = {
+  id: "bi-onco",
+  name: "Medical Oncology / Hematology",
+  title: "DISCHARGE SUMMARY",
+  department: "Department of Medical Oncology and Hematology",
+  sections: [
+    ptSec(),
+    { heading: "Diagnosis", kind: "diagnosis", guidance:
+`Line 1, the way oncology files write it: [site / type], [histology], [grade], [stage - TNM / ISS / R-ISS / Ann Arbor / risk group, as documented], [key IHC, molecular or cytogenetic markers as documented], [status: newly diagnosed / on treatment / relapsed / refractory / in remission], [current regimen with "post C_ D_" if documented], [ECOG PS if documented].
+Line 2: the reason for this admission (febrile neutropenia, tumour lysis, chemo toxicity, "for C_ of ___", etc.).
+Then other complications, then comorbidities.` },
+    { heading: "Oncology History", kind: "narrative", guidance:
+`Date-wise list of the cancer before this admission, oldest first, one event per line (single line breaks), like an oncology file:
+"[Month/Year] - [first symptoms / how it was picked up]
+[Date] - [biopsy / BM / PET-CT / staging scan]: [result]
+[Date] - Started on [regimen] ([intent if written]); received [n] cycles, last on [date]. Response: [CR / PR / SD / PD on which scan]
+[Date] - [surgery / RT dose and fractions / transplant / relapse and change of line, with reason]"
+Only events in the case data. Nothing from the current admission here. If there is no earlier history, write: Newly diagnosed during this admission.` },
+    { heading: "Clinical Summary", kind: "narrative", guidance:
+`1. "[Age] yr old [male/female], a known case of [cancer with stage], on [current regimen], last cycle (C_) on [date], k/c/o [other comorbidities]. Presented with c/o [complaints with duration] [on D_ post C_, if written]. No h/o [relevant negatives that are documented]."
+
+2. "On admission, pt was [general condition], ECOG ___. BP ___ mmHg, PR ___/min, RR ___/min, temp ___, SpO2 ___% on [RA / O2]. GE: [pallor, icterus, lymphadenopathy, mucositis, oedema]. S/E: [findings, incl. liver / spleen size, mass, port / PICC site]."
+
+3. "Investigations revealed Hb ___, TLC ___ (ANC ___), platelets ___. [RFT, LFT, electrolytes, uric acid, LDH, calcium as relevant.] [Cultures with organism and sensitivity.] [Imaging.] [Tumour markers / BM.]"` },
+    { heading: "Hospital Course", kind: "narrative", guidance:
+`"Pt was managed as a case of [febrile neutropenia / tumour lysis / ___] with [antibiotics with doses and start dates, G-CSF, IV fluids, allopurinol / rasburicase, transfusions with units]."
+Then date-wise: fever spikes and when the fever settled, ANC and platelet counts as they changed ("ANC recovered to ___ on [date]"), culture reports and the escalation or de-escalation they led to, transfusions (product and units), toxicities with grade if written, procedures (BM, line insertion, LP / IT chemo), consultations and their advice.
+Chemotherapy given in this admission: "Received C_ D_ of [regimen] on [date] (Ht ___ cm, Wt ___ kg, BSA ___ m²): [each drug with dose, as charted]." Then how it was tolerated, as written.
+${COURSE_RULE}
+End as per OUTCOME. For discharge: "At discharge, pt is afebrile [for ___ hrs if written], hemodynamically stable, [taking orally]. Counts: Hb ___, TLC ___, platelets ___. Being discharged in stable condition."` },
+    txSec(),
+    medSec(),
+    { heading: "Advice on Discharge", kind: "advice", guidance:
+`Like this:
+1. Continue medications as advised. [Antibiotics to complete, steroid taper, antiemetics, prophylaxis (antiviral / antifungal / PCP), with duration, as documented.]
+2. [Drug] on hold till [review].
+3. CBC [and RFT / LFT] on [day / date]. (only if documented)
+4. Next cycle (C_) of [regimen] due on [date] - to come to day care with CBC, RFT, LFT. Follow up in [department] OPD after [interval] with reports. "[Biopsy IHC / PET / BM] report awaited - to be collected" for each pending report.
+5. Review SOS in emergency in case of fever, bleeding from any site, breathlessness, loose stools or vomiting not settling, reduced urine output [and other symptoms that fit this case].
+${ADVICE_RULES}` },
+    signSec(),
+  ],
+};
+
+const DAYCARE = {
+  id: "bi-daycare",
+  name: "Chemotherapy Day Care (short)",
+  title: "DAY CARE SUMMARY",
+  department: "Department of Medical Oncology and Hematology",
+  sections: [
+    ptSec(["Name", "Age/Sex", "UHID", "Day Care No.", "Date of Admission", "Date of Discharge"]),
+    { heading: "Diagnosis", kind: "diagnosis", guidance:
+`One or two lines: [cancer, histology, stage, key markers as documented], [status], on [regimen] - [intent if written]. Then comorbidities.` },
+    { heading: "Chemotherapy Details", kind: "narrative", guidance:
+`Keep it short, the way day care summaries are written. No hospital course.
+
+"[Age] yr old [male/female], a known case of [diagnosis with stage], on [regimen], admitted in day care for C_ [D_] of [regimen]."
+
+"Pre-chemo: pt [asymptomatic / complaints], ECOG ___. Wt ___ kg, Ht ___ cm, BSA ___ m². BP ___ mmHg, PR ___/min. CBC: Hb ___, TLC ___, ANC ___, platelets ___. [RFT / LFT values.]"
+
+"Received [drug] ___ mg [(___ mg/m²)] [IV over ___ in ___ mL NS], [next drug ...], after premedication with [antiemetics, steroid, antihistamine as charted]."
+
+"[Tolerated well / infusion reaction or other event and how it was managed.] Discharged in stable condition." Write "tolerated well" only if the notes say so.` },
+    medSec("Medications to take at home:"),
+    { heading: "Advice", kind: "advice", guidance:
+`Like this:
+1. [Post-chemo drugs: antiemetics, G-CSF injection dates, steroids, mouthwash, with duration, as documented.]
+2. CBC on D_ / [date]. (only if documented)
+3. Next cycle (C_) due on [date] - to come with CBC, RFT, LFT [as documented].
+4. Review SOS in emergency in case of fever, vomiting not settling, loose stools, bleeding, breathlessness [and others that fit].
+${ADVICE_RULES}` },
+    signSec(),
+  ],
+};
+
+const NEPHRO = {
+  id: "bi-nephro",
+  name: "Nephrology",
+  title: "DISCHARGE SUMMARY",
+  department: "Department of Nephrology",
+  sections: [
+    ptSec(),
+    { heading: "Diagnosis", kind: "diagnosis", guidance:
+`Main renal diagnosis as written: [AKI (KDIGO stage) / AKI on CKD / CKD stage ___ / ESRD on MHD via [access] since ___ / renal transplant recipient ([year], [donor]) with graft dysfunction], with [cause or biopsy diagnosis].
+Then complications (hyperkalaemia, metabolic acidosis, uraemic encephalopathy, fluid overload, access infection), then comorbidities with duration.` },
+    { heading: "Clinical Summary", kind: "narrative", guidance:
+`1. "[Age] yr old [male/female], k/c/o [DM / HTN with duration]. [Renal history: CKD since ___, baseline creatinine ___ ([date]); on MHD ___ times/week via [AVF / catheter] since ___; transplant ___.] Presented with c/o [reduced urine output, swelling, breathlessness, vomiting, etc.] for ___. [h/o NSAID / contrast / native medicine intake - only if documented.] No h/o [relevant negatives]."
+
+2. "On admission, BP ___ mmHg, PR ___/min, RR ___/min, SpO2 ___% on [RA / O2]. [Wt ___ kg.] GE: [pallor, pedal oedema, JVP]. S/E: [RS crepts, CVS, P/A, CNS - asterixis / sensorium]. [Urine output ___ mL/day.]"
+
+3. "Urea ___, creatinine ___, Na ___, K ___, [HCO3 / ABG], Ca ___, PO4 ___, uric acid ___, Hb ___. Urine R/M: [protein, RBC, pus cells, casts]. [UPCR / 24-hr urine protein.] USG KUB: [kidney sizes, echotexture, CMD]. [ANA, ANCA, anti-GBM, C3 / C4, viral markers.] [Renal biopsy ([date]): findings.] Pt was diagnosed as a case of [diagnosis]."` },
+    { heading: "Hospital Course", kind: "narrative", guidance:
+`"Pt was managed with [IV fluids / diuretics, anti-hyperkalaemic measures, soda bicarbonate, antibiotics, antihypertensives, EPO / iron]."
+Then date-wise: urine output and weight; dialysis - catheter insertion (site and date), each HD / SLED session or the number of sessions with dates and UF if written; urea, creatinine and K trend ("creatinine ___ -> ___ -> ___"); renal biopsy and immunosuppression (drug, dose, dates); transfusions; complications and consults.
+${COURSE_RULE}
+End as per OUTCOME. For discharge: "At discharge, pt is [conscious, oriented], BP ___ mmHg, urine output ___ mL/day, creatinine ___ mg/dL ([date]). [Dialysis independent / on MHD; dry weight ___ kg.] Being discharged in stable condition."` },
+    txSec(),
+    medSec(),
+    { heading: "Advice on Discharge", kind: "advice", guidance:
+`Like this:
+1. Continue medications as advised. [Durations; immunosuppressant doses and level checks, as documented.]
+2. [Drug] on hold till [review].
+3. MHD ___ times/week via [access] at [centre] / next dialysis on [date]. (only if documented)
+4. RFT and serum electrolytes after [interval]. (only if documented)
+5. Follow up in Nephrology OPD after [interval] with reports. "[Biopsy / serology] report awaited" for each pending report.
+6. Review SOS in emergency in case of reduced urine output, swelling, breathlessness, fever or chills (also at catheter site or during dialysis), vomiting, drowsiness, palpitations.
+${ADVICE_RULES}` },
+    signSec(),
+  ],
+};
+
+const CARDIO = {
+  id: "bi-cardio",
+  name: "Cardiology",
+  title: "DISCHARGE SUMMARY",
+  department: "Department of Cardiology",
+  sections: [
+    ptSec(),
+    { heading: "Diagnosis", kind: "diagnosis", guidance:
+`As written: [ACS type - STEMI ([wall]) / NSTEMI / UA], [Killip class], [thrombolysed with ___ / primary PCI / late presentation], [CAG: SVD / DVD / TVD], [s/p PTCA to ___ with ___ stent(s) on [date]], [LVEF ___%], [heart failure / arrhythmia / valve lesion with severity].
+Then complications, then risk factors (DM, HTN, dyslipidaemia, smoker).` },
+    { heading: "Clinical Summary", kind: "narrative", guidance:
+`1. "[Age] yr old [male/female], k/c/o [risk factors with duration], [smoker - ___ pack-yrs, if written], [old CAD: earlier MI / PCI / CABG with dates]. Presented with c/o [chest pain - site, type, radiation, duration, time of onset / breathlessness (NYHA ___) / palpitations / syncope], associated with [sweating, vomiting]. [Treatment received outside: loading dose / thrombolysis with time.]"
+
+2. "On admission, BP ___ mmHg, PR ___/min [regular / irregular], RR ___/min, SpO2 ___% on [RA / O2]. [JVP, basal crepts, S3, murmurs.] Killip class ___."
+
+3. "ECG: [rhythm, ST changes with leads]. Trop I / T ___ [serial values]. ECHO: [RWMA, LVEF ___%, MR grade, valves, clot, pericardial effusion]. [Lipid profile, HbA1c, RFT, electrolytes.] [CXR.] Pt was diagnosed as a case of [diagnosis]."` },
+    { heading: "Procedure Details", kind: "narrative", guidance:
+`Only what the procedure note says, in this form:
+"CAG ([date], via [right radial / femoral]): [LMCA, LAD, LCx, RCA findings with % stenosis] - [SVD / DVD / TVD]."
+"PTCA ([date]): [culprit vessel and segment], [predilatation], [stent name ___ x ___ mm], [post-dilatation], TIMI ___ flow achieved."
+[Other procedures - TPI, IABP, pericardiocentesis, PPI / ICD - with date and details.]
+If no procedure is documented in this admission, write: Nil.` },
+    { heading: "Hospital Course", kind: "narrative", guidance:
+`"Pt was started on [DAPT (loading doses), anticoagulant, statin, beta blocker, nitrates, diuretics, inotropes - with doses]."
+Then date-wise: chest pain, BP and HR, rhythm events and how they were managed, inotrope weaning, repeat ECG / Trop / ECHO, access site, creatinine after contrast, complications and consults.
+${COURSE_RULE}
+End as per OUTCOME. For discharge: "At discharge, pt is chest pain free, hemodynamically stable, BP ___ mmHg, PR ___/min, [ambulating]. Being discharged in stable condition."` },
+    txSec(),
+    medSec(),
+    { heading: "Advice on Discharge", kind: "advice", guidance:
+`Like this:
+1. Continue medications as advised. [DAPT duration and "not to stop antiplatelets without consulting cardiologist" - only if documented.]
+2. [Drug] on hold till [review].
+3. [Repeat ECHO / lipid profile / RFT after ___.] (only if documented)
+4. Follow up in Cardiology OPD after [interval] with reports.
+5. Review SOS in emergency in case of chest pain, breathlessness, palpitations, giddiness or fainting, [bleeding from any site if on antiplatelets / anticoagulants], [swelling or pain at puncture site if a procedure was done].
+${ADVICE_RULES}` },
+    signSec(),
+  ],
+};
+
+const PULM = {
+  id: "bi-pulm",
+  name: "Pulmonary Medicine / RICU",
+  title: "DISCHARGE SUMMARY",
+  department: "Department of Pulmonary Medicine",
+  sections: [
+    ptSec(),
+    { heading: "Diagnosis", kind: "diagnosis", guidance:
+`As written: [AECOPD / pneumonia (CURB-65 ___) / ILD / asthma exacerbation / TB (site, CBNAAT and rifampicin result) / pleural effusion (type, cause)], with [type 1 / type 2 respiratory failure], [organism if isolated].
+Then complications (pneumothorax, VAP, cor pulmonale), then comorbidities; smoking status (pack-yrs) if written.` },
+    { heading: "Clinical Summary", kind: "narrative", guidance:
+`1. "[Age] yr old [male/female], [smoker - ___ pack-yrs / biomass exposure / occupational exposure, as written], k/c/o [COPD / asthma / ILD / old TB with duration and treatment, inhalers, home O2], [earlier admissions, NIV or intubation]. Presented with c/o [breathlessness (mMRC ___), cough with / without expectoration, fever, chest pain, haemoptysis] for ___."
+
+2. "On admission, pt was [in respiratory distress / using accessory muscles / drowsy], RR ___/min, SpO2 ___% on [RA / O2 ___ L/min], BP ___ mmHg, PR ___/min, temp ___. RS: [air entry, breath sounds, wheeze, crepts - side and zone]."
+
+3. "ABG at admission: pH ___, pCO2 ___, pO2 ___, HCO3 ___ [on FiO2 ___]. [CBC, RFT, LFT.] CXR: [findings]. [HRCT / CECT chest.] Sputum: [Gram stain, AFB, CBNAAT / TrueNat with rifampicin result, culture]. [BAL / pleural fluid with ADA, procalcitonin, ECHO (PAH, RVSP).] Pt was diagnosed as a case of [diagnosis]."` },
+    { heading: "Hospital Course", kind: "narrative", guidance:
+`"Pt was managed with [O2 / NIV (BiPAP, IPAP ___ / EPAP ___) / HFNC / intubation and MV from [date]], [nebulisation, steroids, antibiotics with doses]."
+Then date-wise: work of breathing, O2 requirement, serial ABG ("pCO2 ___ -> ___"), NIV hours and weaning, ventilator days and extubation date, CXR changes, culture reports and antibiotic changes, procedures (ICD insertion / removal dates, thoracocentesis volume and colour, bronchoscopy), consults.
+${COURSE_RULE}
+End as per OUTCOME. For discharge: "At discharge, pt is maintaining SpO2 ___% on [RA / O2 ___ L/min], RR ___/min, afebrile, [ambulatory]. Being discharged in stable condition."` },
+    txSec(),
+    medSec(),
+    { heading: "Advice on Discharge", kind: "advice", guidance:
+`Like this:
+1. Continue medications as advised. [Inhalers with device; ATT with phase and duration; steroid taper - as documented.]
+2. [Drug] on hold till [review].
+3. [Home O2 ___ L/min for ___ hrs/day / home NIV settings.] (only if documented)
+4. [PFT / repeat CXR after ___.] (only if documented)
+5. Follow up in Pulmonary Medicine OPD after [interval] with reports. "[Sputum culture / DST / biopsy] report awaited" for each pending report.
+6. Review SOS in emergency in case of increased breathlessness, drowsiness, fever, blood in sputum, chest pain, bluish lips.
+${ADVICE_RULES}` },
+    signSec(),
+  ],
+};
+
+const NEURO = {
+  id: "bi-neuro",
+  name: "Neurology",
+  title: "DISCHARGE SUMMARY",
+  department: "Department of Neurology",
+  sections: [
+    ptSec(),
+    { heading: "Diagnosis", kind: "diagnosis", guidance:
+`As written: syndrome with localisation and cause (e.g. "[acute ischaemic stroke] - [territory]"), [thrombolysed with ___ / not thrombolysed (reason if written)], [NIHSS at admission ___ / discharge ___], then complications, then risk factors and comorbidities.` },
+    { heading: "Clinical Summary", kind: "narrative", guidance:
+`1. "[Age] yr old [right / left handed, if written] [male/female], k/c/o [risk factors with duration]. Presented with [sudden onset / gradually progressive] [weakness of ___ / slurring of speech / seizures (type, number, duration, post-ictal state) / headache / altered sensorium] since ___. [Last known normal time / onset to door time.] [Progression; preceding fever, diarrhoea or vaccination.] No h/o [trauma, similar episodes, other relevant negatives]."
+
+2. "On admission, GCS ___ (E_V_M_), BP ___ mmHg, PR ___/min, RBS ___. Higher mental functions: [ ]. Speech: [ ]. Cranial nerves: [ ]. Motor: tone [ ], power [R UL ___/5, R LL ___/5, L UL ___/5, L LL ___/5], DTRs [ ], plantars [ ]. Sensory: [ ]. Cerebellar: [ ]. Meningeal signs: [ ]. [NIHSS ___.]"
+
+3. "[NCCT / MRI brain] ([date]): [findings]. [MRA / CTA, carotid Doppler, ECHO, Holter.] [CSF: cells, protein, sugar, ADA, Gram / AFB, CBNAAT, culture.] [EEG.] [NCS / EMG.] [Lipid profile, HbA1c, B12, TSH, vasculitic / viral markers.] Pt was diagnosed as a case of [diagnosis]."` },
+    { heading: "Hospital Course", kind: "narrative", guidance:
+`"Pt was managed with [thrombolysis - drug, dose and time / antiplatelets / anticoagulation / AEDs with doses / IVIG or PLEX with dates and cycles / steroids / antibiotics, antivirals / anti-oedema measures]."
+Then date-wise: GCS and power changes, further seizures, swallow assessment and feeding (RT / oral), airway (NIV / intubation; SBC, NIF in GBS), repeat imaging, physiotherapy, complications (aspiration, bedsores, DVT) and consults.
+${COURSE_RULE}
+End as per OUTCOME. For discharge: "At discharge, pt is conscious, [oriented], GCS ___, power [___], [mRS ___], [taking orally / on RT feeds], [walking with / without support]. Being discharged in stable condition."` },
+    txSec(),
+    medSec(),
+    { heading: "Advice on Discharge", kind: "advice", guidance:
+`Like this:
+1. Continue medications as advised. [AEDs - "not to stop on own" if documented; antiplatelet / anticoagulant duration.]
+2. [Drug] on hold till [review].
+3. [RT feeding, position change every 2 hrs, physiotherapy, catheter care - only if documented.]
+4. [Driving / swimming / working at heights restriction - only if documented.]
+5. Follow up in Neurology OPD after [interval] with reports. "[Report] awaited" for each pending report.
+6. Review SOS in emergency in case of new weakness, seizures, drowsiness or confusion, severe headache, vomiting, difficulty in swallowing or breathing.
+${ADVICE_RULES}` },
+    signSec(),
+  ],
+};
+
+const GASTRO = {
+  id: "bi-gastro",
+  name: "Gastroenterology / Hepatology",
+  title: "DISCHARGE SUMMARY",
+  department: "Department of Gastroenterology",
+  sections: [
+    ptSec(),
+    { heading: "Diagnosis", kind: "diagnosis", guidance:
+`As written: e.g. [decompensated CLD - [cause], CTP class ___ (___), MELD ___] with [ascites / variceal bleed / HE grade ___ / SBP / HRS-AKI / jaundice], [UGIE: varices grade, EVL with ___ bands on [date]]; or [acute pancreatitis (cause, severity)], [UGI / LGI bleed with source], [IBD - extent and severity], [obstructive jaundice - cause].
+Then complications, then comorbidities.` },
+    { heading: "Clinical Summary", kind: "narrative", guidance:
+`1. "[Age] yr old [male/female], [alcohol intake ___ for ___ yrs, last drink ___ - if written], k/c/o [CLD since ___, earlier decompensations, earlier EVL / paracentesis, HBV / HCV treatment, other comorbidities]. Presented with c/o [haematemesis / melena (episodes) / abdominal distension / yellowish discolouration of eyes / altered sensorium / pain abdomen] for ___."
+
+2. "On admission, pt was [conscious / drowsy, HE grade ___], BP ___ mmHg, PR ___/min. GE: [pallor, icterus, pedal oedema, flaps, stigmata of CLD]. P/A: [distension, shifting dullness, organomegaly, tenderness]. [Wt ___ kg, abdominal girth ___ cm.]"
+
+3. "Hb ___, TLC ___, platelets ___. LFT: T. bil ___ (D ___), SGOT / SGPT ___ / ___, ALP ___, albumin ___; PT / INR ___. [RFT, Na, K.] [Amylase / lipase.] USG abdomen: [liver size, echotexture, PV diameter, spleen, ascites]. [Ascitic fluid: TLC, neutrophils, SAAG, protein, culture.] [Viral markers, AFP.] [UGIE ([date]): findings.] [CECT / MRCP.] Pt was diagnosed as a case of [diagnosis]."` },
+    { heading: "Hospital Course", kind: "narrative", guidance:
+`"Pt was managed with [terlipressin / octreotide, PPI, ceftriaxone, blood transfusion (units), lactulose, rifaximin, albumin, diuretics, antibiotics - with doses]."
+Then date-wise: bleed control, Hb trend and transfusions, EVL / endoscopic therapy with date and number of bands, paracentesis with dates and volume (and albumin given), HE grade and stool frequency, bilirubin / INR / creatinine / Na trend, complications and consults.
+${COURSE_RULE}
+End as per OUTCOME. For discharge: "At discharge, pt is conscious, oriented, [no flaps], [no fresh bleed since ___], [passing ___ stools/day], [abdomen soft / ascites ___], [Wt ___ kg]. Being discharged in stable condition."` },
+    txSec(),
+    medSec(),
+    { heading: "Advice on Discharge", kind: "advice", guidance:
+`Like this:
+1. Continue medications as advised. [Diuretics; beta blocker with target HR; lactulose to pass ___ stools/day - as documented.]
+2. [Drug] on hold till [review].
+3. [Complete abstinence from alcohol - only if documented.]
+4. [Repeat EVL on ___ / LFT, RFT, Na after ___.] (only if documented)
+5. Follow up in [department] OPD after [interval] with reports. "[Report] awaited" for each pending report.
+6. Review SOS in emergency in case of blood vomiting, black stools, confusion or excess sleepiness, pain abdomen with fever, reduced urine output, increasing distension.
+${ADVICE_RULES}` },
+    signSec(),
+  ],
+};
+
+export const DEFAULT_TEMPLATE = GM;
+export const BUILTIN_TEMPLATES = [GM, ONCO, DAYCARE, NEPHRO, CARDIO, PULM, NEURO, GASTRO];
+export const isBuiltin = (id) => !id || BUILTIN_TEMPLATES.some((t) => t.id === id);
+export const builtinById = (id) => BUILTIN_TEMPLATES.find((t) => t.id === id) || GM;
+
+/** Suggest a built-in from the department read off the sheets. Order matters
+ *  ("Medical Oncology", "Pulmonary Medicine" also contain "medic"). */
+const SUGGEST = [
+  [/onco|hemat|haemat|\bbmt\b/i, "bi-onco"],
+  [/nephro|renal|dialysis/i, "bi-nephro"],
+  [/cardio|\bccu\b|cardiac|\bcath/i, "bi-cardio"],
+  [/pulmo|chest|respirat|\bricu\b|tuberc/i, "bi-pulm"],
+  [/neuro(?!.*surg)/i, "bi-neuro"],
+  [/gastro|hepat|liver|\bgi\b/i, "bi-gastro"],
+  [/medicine|\bmicu\b|\bmmw\b|\bfmw\b/i, "default"],
+];
+export function suggestBuiltin(dept) {
+  const s = String(dept || "");
+  if (!s.trim()) return null;
+  for (const [re, id] of SUGGEST) if (re.test(s)) return id;
+  return null;
+}
 
 /* ---------- helpers ---------- */
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };

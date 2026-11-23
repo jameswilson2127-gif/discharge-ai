@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=13";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=13";
-import { buildChronology } from "./chrono.js?v=13";
-import { labPanel, consistencyIssues } from "./checks.js?v=13";
+import { CONFIG } from "./config.js?v=14";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=14";
+import { buildChronology } from "./chrono.js?v=14";
+import { labPanel, consistencyIssues } from "./checks.js?v=14";
 
 /* ============================================================
    Setup & helpers
@@ -375,7 +375,7 @@ async function loadTemplates() {
     const def = state.templates.find((t) => t.is_default);
     if (def) setTemplate(def.id, { quiet: true });
   }
-  if (state.patient.templateId !== "default" && !state.templates.some((t) => t.id === state.patient.templateId)) {
+  if (!isBuiltin(state.patient.templateId) && !state.templates.some((t) => t.id === state.patient.templateId)) {
     setTemplate("default", { quiet: true });
   }
   renderTemplatePicker();
@@ -384,7 +384,7 @@ async function loadTemplates() {
 }
 
 function templateById(id) {
-  if (!id || id === "default") return clone(DEFAULT_TEMPLATE);
+  if (isBuiltin(id)) return clone(builtinById(id));
   const row = state.templates.find((t) => t.id === id);
   return row ? { ...normaliseTemplate(row.data), id: row.id, name: row.name } : clone(DEFAULT_TEMPLATE);
 }
@@ -406,10 +406,12 @@ function setTemplate(id, { quiet = false } = {}) {
 
 function renderTemplatePicker() {
   const sel = $("#p_template");
-  sel.innerHTML = `<option value="default">${esc(DEFAULT_TEMPLATE.name)}</option>` +
-    state.templates.map((t) => `<option value="${t.id}">${esc(t.name)}${t.is_default ? " ★" : ""}</option>`).join("") +
+  const mine = state.templates.map((t) => `<option value="${t.id}">${esc(t.name)}${t.is_default ? " ★" : ""}</option>`).join("");
+  sel.innerHTML = (mine ? `<optgroup label="My templates">${mine}</optgroup>` : "") +
+    `<optgroup label="Built-in (by department)">${BUILTIN_TEMPLATES.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("")}</optgroup>` +
     `<option value="__manage">＋ New / manage templates…</option>`;
-  sel.value = state.templates.some((t) => t.id === state.patient.templateId) ? state.patient.templateId : "default";
+  const id = state.patient.templateId;
+  sel.value = isBuiltin(id) || state.templates.some((t) => t.id === id) ? (id || "default") : "default";
 }
 
 /* ============================================================
@@ -418,14 +420,20 @@ function renderTemplatePicker() {
 const ed = { id: null, photos: [], tpl: null };
 
 function renderTemplateList() {
-  const items = [`<div class="tpl-item"><span class="nm">${esc(DEFAULT_TEMPLATE.name)}<span class="meta">Built-in · House format of the Department of General Medicine</span></span>
-    <button class="btn small" data-use="default">${state.patient.templateId === "default" ? "In use ✓" : "Use"}</button></div>`];
+  const items = [];
   for (const t of state.templates) {
     const n = (t.data?.sections || []).length;
     items.push(`<div class="tpl-item"><span class="nm">${esc(t.name)}${t.is_default ? '<span class="badge">Default</span>' : ""}
       <span class="meta">${n} sections · updated ${new Date(t.updated_at).toLocaleDateString("en-IN")}</span></span>
       <button class="btn small" data-use="${t.id}">${state.patient.templateId === t.id ? "In use ✓" : "Use"}</button>
       <button class="btn small" data-edit="${t.id}">Edit</button></div>`);
+  }
+  if (items.length) items.unshift(`<h3 class="sub">My templates</h3>`);
+  items.push(`<h3 class="sub">Built-in, by department</h3>`);
+  for (const t of BUILTIN_TEMPLATES) {
+    items.push(`<div class="tpl-item"><span class="nm">${esc(t.name)}<span class="meta">Built-in · ${esc(t.department)}</span></span>
+      <button class="btn small" data-use="${t.id}">${state.patient.templateId === t.id ? "In use ✓" : "Use"}</button>
+      <button class="btn small" data-copy="${t.id}">Copy &amp; edit</button></div>`);
   }
   $("#tplList").innerHTML = items.join("");
   $("#tplListView").hidden = false;
@@ -999,6 +1007,13 @@ function renderAttention() {
     <button class="btn small" data-goto="medications">Edit medications</button></div>`);
   const held = d.held_drugs.filter((h) => h.drug);
   if (held.length) items.push(`<div class="att-item"><b>Drugs on hold</b><p>${held.map((h) => esc(h.drug + (h.reason ? ` (${h.reason})` : ""))).join("; ")}</p></div>`);
+  const sug = suggestBuiltin(d.department);
+  const cur = state.patient.templateId || "default";
+  if (sug && isBuiltin(cur) && sug !== cur && !(sug === "bi-onco" && cur === "bi-daycare")) {
+    const b = builtinById(sug);
+    items.push(`<div class="att-item"><b>Department: ${esc(d.department)}</b><p>You are using the ${esc(builtinById(cur).name)} format.</p>
+      <button class="btn small" data-usetpl="${b.id}">Use the ${esc(b.name)} format</button></div>`);
+  }
   if (!d.admission_date) items.push(`<div class="att-item warn"><b>No admission date read</b><p>Add it under "Patient (from photos)" so the story is in the right order.</p></div>`);
   box.innerHTML = `<h3 class="att-head">Needs your attention</h3>${items.join("")}`;
 }
@@ -1431,7 +1446,11 @@ function bind() {
   });
   $("#finalVerify").addEventListener("change", (e) => setVerified(e.target.checked));
   $("#rxReview").addEventListener("click", onRxClick);
-  $("#attention").addEventListener("click", (e) => { const b = e.target.closest("[data-goto]"); if (b) openSection(b.dataset.goto); });
+  $("#attention").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-usetpl]");
+    if (t) { setTemplate(t.dataset.usetpl); renderAttention(); renderOptsSummary(); toast(`Using the ${builtinById(t.dataset.usetpl).name} format.`); return; }
+    const b = e.target.closest("[data-goto]"); if (b) openSection(b.dataset.goto);
+  });
   $("#rxFinal").addEventListener("click", onRxClick);
   $("#copyBtn").addEventListener("click", async () => {
     if (!$("#finalVerify").checked) return;
@@ -1462,7 +1481,8 @@ function bind() {
 
   // Templates
   $("#tplList").addEventListener("click", (e) => {
-    const u = e.target.dataset.use, ed_ = e.target.dataset.edit;
+    const u = e.target.dataset.use, ed_ = e.target.dataset.edit, cp = e.target.dataset.copy;
+    if (cp) { const b = builtinById(cp); openEditor({ tpl: normaliseTemplate(b), name: `My ${b.name} format` }); return; }
     if (u) { setTemplate(u); renderTemplateList(); toast("Template selected."); }
     if (ed_) {
       const row = state.templates.find((t) => t.id === ed_);
@@ -1470,7 +1490,10 @@ function bind() {
     }
   });
   $("#tplNew").addEventListener("click", () => openEditor());
-  $("#tplFromDefault").addEventListener("click", () => openEditor({ tpl: normaliseTemplate(DEFAULT_TEMPLATE), name: "My General Medicine format" }));
+  $("#tplFromDefault")?.addEventListener("click", () => {
+    const b = builtinById(isBuiltin(state.patient.templateId) ? state.patient.templateId : "default");
+    openEditor({ tpl: normaliseTemplate(b), name: `My ${b.name} format` });
+  });
   $("#tplCancel").addEventListener("click", renderTemplateList);
   $("#tplRedo").addEventListener("click", () => showEditorStage("source"));
   $("#tplAnalyze").addEventListener("click", analyseTemplate);
