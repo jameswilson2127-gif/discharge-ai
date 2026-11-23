@@ -110,7 +110,7 @@ function thinkingCfg(model: string, budget: number, level: string) {
 async function callGemini(opts: {
   system: string; parts: unknown[]; schema: unknown; maxTokens: number; thinkingBudget: number; thinkingLevel: string;
 }) {
-  let model = env("GEMINI_TEXT_MODEL", env("GEMINI_MODEL", "gemini-2.5-flash"));
+  let model = env("GEMINI_TEXT_MODEL", env("GEMINI_MODEL", "gemini-3.1-flash-lite"));
   // If a model rejects the requested thinking setting (e.g. "minimal"), retry once with "low".
   let level = opts.thinkingLevel;
   const makeBody = () => JSON.stringify({
@@ -124,14 +124,12 @@ async function callGemini(opts: {
       thinkingConfig: thinkingCfg(model, opts.thinkingBudget, level),
     },
   });
-  // When Google's model is overloaded (429/503), retry once, then switch to a fallback model
-  // instead of failing - the doctor gets the summary without waiting or retrying.
-  const models = [model, env("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")].filter((m, i, a) => m && a.indexOf(m) === i);
+  // Only the configured model is used (no fallback). When Google's model is busy (429/503),
+  // wait and retry it up to 3 times so the doctor doesn't have to tap again.
   let last = "";
-  for (const m of models) {
-    model = m; level = opts.thinkingLevel;
+  {
     let body = makeBody();
-    let overloaded = false;
+    let busyTries = 0;
     for (let attempt = 0; attempt < 2; attempt++) {
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -161,10 +159,11 @@ async function callGemini(opts: {
       }
       last = `${r.status} ${await r.text()}`;
       if (r.status === 400 && /thinking/i.test(last) && level !== "low") { level = "low"; body = makeBody(); attempt--; continue; }
-      if (r.status === 429 || r.status >= 500) { overloaded = true; if (attempt === 0) await new Promise((s) => setTimeout(s, 1200)); continue; }
+      if ((r.status === 429 || r.status >= 500) && ++busyTries <= 3) {
+        await new Promise((s) => setTimeout(s, 1500 * busyTries)); attempt--; continue;
+      }
       break; // other errors: don't retry
     }
-    if (!overloaded) break;
   }
   throw Object.assign(new Error(last.startsWith("AI returned") || last.startsWith("Empty") ? last : `Gemini error: ${last.slice(0, 200)}`), { model });
 }
