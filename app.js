@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=21";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=21";
-import { buildChronology } from "./chrono.js?v=21";
-import { labPanel, consistencyIssues } from "./checks.js?v=21";
+import { CONFIG } from "./config.js?v=22";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=22";
+import { buildChronology } from "./chrono.js?v=22";
+import { labPanel, consistencyIssues } from "./checks.js?v=22";
 
 /* ============================================================
    Setup & helpers
@@ -629,7 +629,7 @@ function showStep(step, { keepEditor = false } = {}) {
   for (const s of ["patient", "photos", "review", "final", "templates"]) $(`#step-${s}`).hidden = s !== step;
   $("#stepper").hidden = step === "patient" || step === "templates";
   if (step === "patient") renderHome();
-  if (step === "final") renderAfterDoc();
+  if (step === "final") renderAfterDoc(); else if ($("#groupCard")) { clearTimeout(groupTimer); hideGroupInvite(); }
   if (step === "photos") { renderOptsSummary(); $("#caseOptions").open = !!store.get(LS, "dai_opts_open", false); }
   $$("#stepper button").forEach((b) => {
     b.classList.toggle("on", b.dataset.step === step);
@@ -1324,7 +1324,37 @@ function renderAfterDoc() {
   $("#fbMore").hidden = true; $("#fbThanks").hidden = true; $("#fbComment").value = "";
   $$("#fbBox .fb-btn").forEach((b) => { b.classList.remove("on"); b.disabled = false; });
   $("#fbBox").hidden = !!state.fbSent;
-  $("#groupCard").hidden = !CONFIG.WHATSAPP_GROUP_URL || !!store.get(LS, "dai_group_done", false);
+  maybeShowGroupInvite();
+}
+/* WhatsApp group invite: slides up 3 s after a summary appears. Joined → never again.
+   "Later"/× → asked again after 5 more summaries, at most 3 times in all. */
+let groupTimer = null;
+function maybeShowGroupInvite() {
+  clearTimeout(groupTimer);
+  hideGroupInvite();
+  if (!CONFIG.WHATSAPP_GROUP_URL || store.get(LS, "dai_group_done", false)) return;
+  const n = Number(store.get(LS, "dai_summaries_seen", 0)) + 1;
+  store.set(LS, "dai_summaries_seen", n);
+  const dismissed = Number(store.get(LS, "dai_group_dismissed", 0));
+  const next = Number(store.get(LS, "dai_group_next", 1));
+  if (dismissed >= 3 || n < next) return;
+  groupTimer = setTimeout(() => {
+    if (state.step !== "final") return;
+    const el = $("#groupCard");
+    el.hidden = false;
+    requestAnimationFrame(() => el.classList.add("show"));
+  }, 3000);
+}
+function hideGroupInvite() {
+  const el = $("#groupCard");
+  if (!el) return;
+  el.classList.remove("show");
+  setTimeout(() => { if (!el.classList.contains("show")) el.hidden = true; }, 300);
+}
+function laterGroupInvite() {
+  store.set(LS, "dai_group_dismissed", Number(store.get(LS, "dai_group_dismissed", 0)) + 1);
+  store.set(LS, "dai_group_next", Number(store.get(LS, "dai_summaries_seen", 0)) + 5);
+  hideGroupInvite();
 }
 async function sendFeedback() {
   const comment = $("#fbComment").value.trim().slice(0, 600);
@@ -1551,8 +1581,9 @@ function bind() {
     if (fbRating > 0 && !$("#fbComment").value) $("#fbComment").focus();
   });
   $("#fbSend").addEventListener("click", sendFeedback);
-  $("#groupClose").addEventListener("click", () => { store.set(LS, "dai_group_done", true); $("#groupCard").hidden = true; });
-  $("#groupJoin").addEventListener("click", () => { store.set(LS, "dai_group_done", true); setTimeout(() => ($("#groupCard").hidden = true), 500); });
+  $("#groupClose").addEventListener("click", laterGroupInvite);
+  $("#groupLater").addEventListener("click", laterGroupInvite);
+  $("#groupJoin").addEventListener("click", () => { store.set(LS, "dai_group_done", true); setTimeout(hideGroupInvite, 400); });
   // Ticking "I have checked the medications" means review is nearly done: refresh the background draft.
   $("#medConfirm").addEventListener("change", (e) => { if (e.target.checked) prefetchDraft(); });
   $("#attention").addEventListener("click", (e) => {

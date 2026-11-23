@@ -449,6 +449,13 @@ mark { background: var(--warn-bg); padding: 0 2px; }
 #fbMore { display: grid; gap: 8px; margin-top: 8px; }
 #fbMore textarea { width: 100%; box-sizing: border-box; }
 #fbMore .btn { justify-self: start; }
-.group-card { position: relative; background: #f1faf5; border-color: #a9dcbf; }
-.group-card p { margin: 6px 0 10px; font-size: 14px; color: var(--muted, #5b6b68); }
-.group-card .x { position: absolute; top: 6px; right: 10px; border: 0; background: none; font-size: 22px; color: #6b7b78; cursor: pointer; }
+.group-pop { position: fixed; left: 50%; bottom: 16px; z-index: 55; width: min(440px, calc(100vw - 24px));
+  transform: translate(-50%, 140%); transition: transform .3s ease; background: #fff; border: 1px solid #a9dcbf;
+  border-radius: 16px; padding: 14px 16px 14px; box-shadow: 0 10px 30px rgba(15, 40, 36, .22); }
+.group-pop.show { transform: translate(-50%, 0); }
+.group-pop .gp-head { display: flex; align-items: center; gap: 8px; padding-right: 22px; }
+.group-pop .gp-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #e3f6eb; font-size: 17px; }
+.group-pop p { margin: 8px 0 12px; font-size: 14px; color: #5b6b68; }
+.group-pop .gp-actions { display: flex; gap: 8px; }
+.group-pop .wa-join { background: #1fa855; border-color: #1fa855; color: #fff; flex: 1; text-align: center; }
+.group-pop .x { position: absolute; top: 6px; right: 10px; border: 0; background: none; font-size: 22px; color: #6b7b78; cursor: pointer; }
