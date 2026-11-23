@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=12";
-import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=12";
-import { buildChronology } from "./chrono.js?v=12";
-import { labPanel, consistencyIssues } from "./checks.js?v=12";
+import { CONFIG } from "./config.js?v=13";
+import { DEFAULT_TEMPLATE, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=13";
+import { buildChronology } from "./chrono.js?v=13";
+import { labPanel, consistencyIssues } from "./checks.js?v=13";
 
 /* ============================================================
    Setup & helpers
@@ -42,10 +42,10 @@ function toast(msg, err = false, ms = 3800) {
   toast._t = setTimeout(() => (t.hidden = true), ms);
 }
 
-let busyTimer = null;
+let busyTimer = null, stageTimer = null;
 function busy(text) {
   const b = $("#busy");
-  clearInterval(busyTimer);
+  clearInterval(busyTimer); clearInterval(stageTimer);
   if (!text) { b.hidden = true; return; }
   const start = Date.now();
   $("#busyText").textContent = text;
@@ -124,6 +124,7 @@ async function loadProfile() {
   renderAccount();
   renderGate();
   renderLength();
+  if (state.step === "patient") renderHome();
 }
 
 function isAdmin() {
@@ -156,6 +157,7 @@ function renderAccount() {
         <button data-menu="export">Download my data</button>
         <a href="terms.html">Terms of Use</a>
         <a href="privacy.html">Privacy Policy</a>
+        ${waLink() ? `<a id="waMenu" href="${esc(waLink())}" target="_blank" rel="noopener">WhatsApp support</a>` : ""}
         <a href="mailto:${esc(CONFIG.CONTACT_EMAIL || "")}">Contact / grievance</a>
         <button data-menu="signout">Sign out</button>
         <button data-menu="delete" class="danger">Delete account</button>
@@ -342,6 +344,8 @@ async function choosePlan(planId) {
       description: plan ? `Pro ${plan.name} — ${plan.price} ${plan.per}` : "Pro",
       prefill: { email: session?.user?.email || "" },
       theme: { color: "#0f4c4a" },
+      // Show UPI first (most Indian users pay this way); other methods stay available.
+      config: { display: { blocks: { upi: { name: "Pay with UPI", instruments: [{ method: "upi" }] } }, sequence: ["block.upi"], preferences: { show_default_blocks: true } } },
       handler: () => { toast("Payment received. Activating Pro…", false, 6000); pollPro(); },
     });
     rz.open();
@@ -577,6 +581,9 @@ function showStep(step, { keepEditor = false } = {}) {
   if (step === "final" && !state.draft) step = state.data ? "review" : "photos";
   state.step = step;
   for (const s of ["patient", "photos", "review", "final", "templates"]) $(`#step-${s}`).hidden = s !== step;
+  $("#stepper").hidden = step === "patient" || step === "templates";
+  if (step === "patient") renderHome();
+  if (step === "photos") { renderOptsSummary(); $("#caseOptions").open = !!store.get(LS, "dai_opts_open", false); }
   $$("#stepper button").forEach((b) => {
     b.classList.toggle("on", b.dataset.step === step);
     b.disabled = (b.dataset.step === "review" && !state.data) || (b.dataset.step === "final" && !state.draft);
@@ -608,6 +615,7 @@ function bindPatientForm() {
     el?.addEventListener("input", () => { state.patient[f] = el.value; state.docHtml = null; saveCase(); });
   }
   $("#p_template").addEventListener("change", (e) => {
+    setTimeout(renderOptsSummary, 0);
     if (e.target.value === "__manage") { renderTemplatePicker(); return showStep("templates"); }
     setTemplate(e.target.value);
   });
@@ -677,6 +685,9 @@ function renderPhotos() {
   $("#photoCount").classList.toggle("full", full);
   for (const id of ["#camBtn", "#galBtn"]) $(id).classList.toggle("off", full);
   $("#camInput").disabled = full; $("#galInput").disabled = full;
+  const pending = state.photos.filter((p) => !idDone(p)).length;
+  $("#noIdsAll").hidden = pending < 2;
+  $("#noIdsAll").textContent = `No IDs on ${pending} pages`;
   if (!state.photos.length) {
     box.innerHTML = `<div class="empty">No photos yet. Add progress notes, investigation reports and the treatment chart.</div>`;
     return;
@@ -685,9 +696,7 @@ function renderPhotos() {
     <div class="photo ${idDone(p) ? "" : "needs-id"}" data-id="${p.id}">
       <img src="${p.url}" alt="Photo ${i + 1}" data-act="view" />
       <div class="row">
-        <select data-act="kind">${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}" ${k === p.kind ? "selected" : ""}>${i + 1}. ${l}</option>`).join("")}</select>
-      </div>
-      <div class="row">
+        <span class="pg-no">Page ${i + 1}</span>
         <button class="btn small" data-act="rotate" aria-label="Rotate 90°" title="Rotate so the writing is upright">⟳</button>
         <button class="btn small" data-act="up" ${i === 0 ? "disabled" : ""} aria-label="Move earlier">◀</button>
         <button class="btn small" data-act="down" ${i === state.photos.length - 1 ? "disabled" : ""} aria-label="Move later">▶</button>
@@ -705,7 +714,7 @@ function onPhotoAction(e) {
   const p = state.photos[i];
   if (e.type === "change" && act === "kind") { p.kind = e.target.value; return; }
   if (e.type !== "click") return;
-  if (act === "view") openLightbox(p, `Photo ${i + 1} · ${KIND_LABEL[p.kind]}`);
+  if (act === "view") openLightbox(p, `Page ${i + 1}`);
   if (act === "mask") openMask(p, renderPhotos);
   if (act === "rotate") rotatePhoto(p).then(renderPhotos);
   if (act === "clean") { p.clean = !p.clean; renderPhotos(); }
@@ -812,7 +821,7 @@ function normalise(d) {
 
 async function extract() {
   if (!state.photos.length) return toast("Add at least one photo first.", true);
-  if (state.data && !confirm("Reading the photos again will replace the data you reviewed. Continue?")) return;
+  if (state.data && !confirm(`Reading the pages again replaces the data you reviewed and uses ${(state.patient.length || "standard") === "detailed" ? "2 more patients" : "another patient"} from your monthly allowance. Continue?`)) return;
   const pending = state.photos.filter((p) => !idDone(p)).length;
   if (pending) {
     renderPhotos();
@@ -824,7 +833,9 @@ async function extract() {
     const left = patientsLeft();
     if (!confirm(`Detailed uses 2 patients from your monthly allowance${left !== null ? ` (${left} left)` : ""}. Continue?`)) return;
   }
-  busy(`Reading ${state.photos.length} photo(s), usually 20–60 seconds`);
+  const n = state.photos.length;
+  busyStages([[`Uploading ${n} page${n > 1 ? "s" : ""}`, 3 + n * 0.4], ["Reading handwriting and reports", 8 + n * 1.6],
+    ["Putting events in date order", 6 + n * 0.8], ["Checking drugs, doses and dates", 5 + n * 0.5], ["Almost done", 30]]);
   try {
     const r = await api("extract", {
       case_id: state.caseId || newCaseId(),
@@ -934,14 +945,19 @@ function renderReview() {
     ? state.photos.map((p, i) => `<img src="${p.url}" data-i="${i}" alt="Photo ${i + 1}" />`).join("")
     : `<p class="hint">Photos are not kept after a page reload. Re-add them if you need to compare.</p>`;
 
+  renderAttention();
+  // Keep sections the doctor opened open when the form re-renders (e.g. after "+ Add row").
+  const wasOpen = new Set($$("#reviewForm details[open]").map((x) => x.dataset.sec));
   let html = "";
-  if (d.unclear_items.length) {
-    html += `<div class="rv-warn"><b>⚠ ${d.unclear_items.length} unclear reading(s) to check</b><ul>${
-      d.unclear_items.map((u) => `<li><b>${esc(u.where)}</b>${u.reading ? `: “${esc(u.reading)}”` : ""} — ${esc(u.reason)}</li>`).join("")
-    }</ul></div>`;
-  }
   for (const s of SECTIONS) {
-    html += `<div class="rv-section"><h3>${esc(s.title)}</h3>`;
+    // Collapsed by default; open the ones that most need a look.
+    const val = s.table ? d[s.table] : s.obj ? d[s.obj] : Object.fromEntries(s.fields.map((f) => [f.k, d[f.k]]));
+    const unclear = /\[\?\]/.test(JSON.stringify(val ?? ""));
+    const count = s.table ? (d[s.table] || []).length : null;
+    const key = s.table || s.obj || s.fields?.[0]?.k || "";
+    const open = wasOpen.has(key) || unclear || s.table === "medications" || s.fields?.some((f) => f.k === "case_story");
+    html += `<details class="rv-section" ${open ? "open" : ""} data-sec="${esc(s.table || s.obj || s.fields?.[0]?.k || "")}">
+      <summary><h3>${esc(s.title)}</h3>${count !== null ? `<span class="sec-count">${count}</span>` : ""}${unclear ? `<span class="sec-flag">check [?]</span>` : ""}</summary>`;
     if (s.note) html += `<p class="hint">${esc(s.note)}</p>`;
     if (s.table) {
       const rows = d[s.table];
@@ -961,13 +977,38 @@ function renderReview() {
       const src = s.obj ? d[s.obj] : d;
       html += `<div class="grid">${s.fields.map((f) => fieldHtml(f, src[f.k], `data-obj="${s.obj || ""}" data-k="${f.k}" data-type="${f.type || ""}"`)).join("")}</div>`;
     }
-    html += `</div>`;
+    html += `</details>`;
   }
-  html += `<div class="rv-section"><h3>Timeline (detected from dates)</h3><p class="hint">This is the order the summary will follow. If something is in the wrong place, fix its date above.</p><div id="timeline" class="timeline"></div></div>`;
+  html += `<details class="rv-section" data-sec="timeline" ${wasOpen.has("timeline") ? "open" : ""}><summary><h3>Timeline (detected from dates)</h3></summary><p class="hint">This is the order the summary will follow. If something is in the wrong place, fix its date above.</p><div id="timeline" class="timeline"></div></details>`;
   $("#reviewForm").innerHTML = html;
   renderTimeline();
   renderRxChecks();
 }
+/* ---------- "Needs your attention" — what the doctor must look at before writing ---------- */
+function renderAttention() {
+  const d = state.data;
+  const box = $("#attention");
+  if (!d || !box) return;
+  const items = [];
+  if (d.unclear_items.length) items.push(`<div class="att-item warn"><b>${d.unclear_items.length} unclear reading${d.unclear_items.length > 1 ? "s" : ""}</b><ul>${
+    d.unclear_items.map((u) => `<li><b>${esc(u.where)}</b>${u.reading ? `: “${esc(u.reading)}”` : ""} — ${esc(u.reason)}</li>`).join("")}</ul></div>`);
+  const dis = d.medications.filter((m) => m.on_discharge && String(m.drug || "").trim());
+  items.push(`<div class="att-item ${dis.length ? "" : "warn"}"><b>Discharge drugs (${dis.length})</b>${dis.length
+    ? `<ol>${dis.map((m) => `<li>${esc([m.form, m.drug, m.dose, m.route, m.frequency, m.dates].filter(Boolean).join(" "))}</li>`).join("")}</ol>`
+    : `<p>None ticked "On discharge" — the discharge list will be empty.</p>`}
+    <button class="btn small" data-goto="medications">Edit medications</button></div>`);
+  const held = d.held_drugs.filter((h) => h.drug);
+  if (held.length) items.push(`<div class="att-item"><b>Drugs on hold</b><p>${held.map((h) => esc(h.drug + (h.reason ? ` (${h.reason})` : ""))).join("; ")}</p></div>`);
+  if (!d.admission_date) items.push(`<div class="att-item warn"><b>No admission date read</b><p>Add it under "Patient (from photos)" so the story is in the right order.</p></div>`);
+  box.innerHTML = `<h3 class="att-head">Needs your attention</h3>${items.join("")}`;
+}
+function openSection(key) {
+  const sec = $(`#reviewForm details[data-sec="${key}"]`);
+  if (!sec) return;
+  sec.open = true;
+  setTimeout(() => sec.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+}
+
 /* ---------- Prescribing aids: lab panel + consistency check (code only, no AI, no advice) ---------- */
 function rxChecksHtml(where) {
   const d = state.data;
@@ -1009,7 +1050,7 @@ function onRxClick(e) {
     saveCase(); renderRxChecks();
   } else {
     if (state.step !== "review") showStep("review");
-    setTimeout(() => $('[data-add="medications"]')?.closest(".rv-section")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    openSection("medications");
   }
 }
 
@@ -1045,7 +1086,7 @@ function onReviewInput(e) {
   if (el.type !== "checkbox") el.classList.toggle("unclear", /\[\?\]/.test(el.value));
   state.docHtml = null; // data changed → document should be rebuilt
   saveCase();
-  clearTimeout(tlTimer); tlTimer = setTimeout(() => { renderTimeline(); renderRxChecks(); }, 400);
+  clearTimeout(tlTimer); tlTimer = setTimeout(() => { renderTimeline(); renderRxChecks(); renderAttention(); }, 400);
 }
 
 function onReviewClick(e) {
@@ -1081,7 +1122,8 @@ async function generate() {
     chronology: buildChronology(d).text }; // date-ordered backbone for the story
   const tpl = currentTemplate();
   const template = { title: tpl.title, department: tpl.department, sections: tpl.sections };
-  busy(`Writing the summary (${tpl.name})`);
+  busyStages([["Preparing the case story", 2], ["Writing history and course", 8], ["Writing advice and follow-up", 5],
+    ["Checking facts against your data", 3], ["Almost done", 20]]);
   try {
     const r = await api("generate", {
       case_id: state.caseId || newCaseId(),
@@ -1153,6 +1195,68 @@ function deptName() {
   return currentTemplate().department || "";
 }
 
+/* ---------- Home, usage meter, WhatsApp ---------- */
+function usageInfo() {
+  if (!profile) return null;
+  const pro = isPro();
+  const limit = pro ? (CONFIG.PRO_MONTHLY_LIMIT ?? 300) : CONFIG.FREE_MONTHLY_LIMIT;
+  const used = profile.usage_month === monthIST() ? profile.extract_count : 0;
+  return { pro, limit, used: Math.min(used, limit), left: Math.max(limit - used, 0) };
+}
+function meterHtml() {
+  const u = usageInfo();
+  if (!u) return "";
+  const pct = u.limit ? Math.round((u.used / u.limit) * 100) : 0;
+  const cls = pct >= 100 ? "full" : pct >= 80 ? "warn" : "";
+  const plans = (CONFIG.PLANS || []).map((p) => `<button class="btn ${p.best ? "primary" : ""}" data-plan="${esc(p.id)}">${esc(p.name)} · ${esc(p.price)}</button>`).join("");
+  return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients this month<span>${u.pro ? "Pro" : "Free"}</span></div>
+    <div class="meter ${cls}"><i style="width:${Math.min(pct, 100)}%"></i></div>
+    <p class="meter-note">${u.left} left · Detailed counts as 2 · resets on the 1st</p>
+    ${u.pro ? "" : `<div class="meter-up"><span>Upgrade with UPI, cards or net banking</span><div class="plan-btns">${plans}</div></div>`}`;
+}
+function renderHome() {
+  const has = state.photos.length || state.data || state.draft;
+  $("#continueBtn").hidden = !has;
+  $("#meterCard").innerHTML = meterHtml();
+  $("#meterCard").hidden = !profile;
+}
+function waLink() {
+  const n = String(CONFIG.WHATSAPP_NUMBER || "").replace(/\D/g, "");
+  if (!n) return "";
+  const msg = "Hi, I need help with Discharge AI. (Please don't send patient photos or details here.)";
+  return `https://wa.me/${n}?text=${encodeURIComponent(msg)}`;
+}
+function renderWhatsApp() {
+  const href = waLink();
+  for (const id of ["#waHome", "#waFoot", "#waMenu"]) { const el = $(id); if (el) { el.hidden = !href; if (href) el.href = href; } }
+}
+function renderOptsSummary() {
+  const tpl = currentTemplate();
+  const out = { discharged: "Discharged", lama: "LAMA", dama: "DAMA", referred: "Referred", expired: "Expired" }[state.patient.outcome || "discharged"];
+  $("#optsSummary").textContent = `${LENGTH_NAMES[state.patient.length || "standard"]} · ${out} · ${tpl.name || "Built-in format"}`;
+}
+
+// Live progress: honest stages based on typical timings (the AI call itself returns all at once).
+function busyStages(stages) {
+  const b = $("#busy");
+  clearInterval(busyTimer); clearInterval(stageTimer);
+  if (!stages) { b.hidden = true; return; }
+  const start = Date.now();
+  const total = stages.reduce((a, s) => a + s[1], 0);
+  const draw = () => {
+    const t = (Date.now() - start) / 1000;
+    let acc = 0, cur = stages.length - 1;
+    for (let i = 0; i < stages.length; i++) { acc += stages[i][1]; if (t < acc) { cur = i; break; } }
+    const pct = Math.min(95, Math.round((t / total) * 100));
+    $("#busyText").innerHTML = `<ol class="stages">${stages.map((s, i) =>
+      `<li class="${i < cur ? "done" : i === cur ? "now" : ""}">${i < cur ? "✓" : i === cur ? "•" : "○"} ${esc(s[0])}</li>`).join("")}</ol>
+      <div class="meter"><i style="width:${pct}%"></i></div><small>${Math.round(t)} s</small>`;
+  };
+  draw();
+  b.hidden = false;
+  stageTimer = setInterval(draw, 500);
+}
+
 /* ---------- Summary length (Concise / Standard / Detailed) ---------- */
 const LENGTH_NAMES = { concise: "Concise", standard: "Standard", detailed: "Detailed" };
 function patientsLeft() {
@@ -1183,6 +1287,7 @@ function setLength(v) {
   store.set(LS, "dai_length", v);
   saveCase();
   renderLength();
+  renderOptsSummary();
 }
 
 function setVerified(v) {
@@ -1263,7 +1368,36 @@ function bind() {
   bindPatientForm();
 
   // Case photos
-  const addCase = async (files) => { if (await addFiles(files, state.photos, MAX_CASE_PHOTOS, $("#defaultKind").value)) renderPhotos(); };
+  const addCase = async (files) => { if (await addFiles(files, state.photos, MAX_CASE_PHOTOS, "other")) renderPhotos(); };
+  // Home: one big button opens the camera; a new case starts from the first photo.
+  const startCase = async (files) => {
+    if (!files?.length) return;
+    if ((state.photos.length || state.data || state.draft) && !confirm("Start a new patient? The current one will be cleared from this device.")) return;
+    if (state.photos.length || state.data || state.draft) clearCase();
+    if (await addFiles(files, state.photos, MAX_CASE_PHOTOS, "other")) { renderPhotos(); showStep("photos"); }
+  };
+  $("#homeCam").addEventListener("change", (e) => { startCase(e.target.files); e.target.value = ""; });
+  $("#homeGal").addEventListener("change", (e) => { startCase(e.target.files); e.target.value = ""; });
+  $("#continueBtn").addEventListener("click", () => showStep(state.draft ? "final" : state.data ? "review" : "photos"));
+  $("#noIdsAll").addEventListener("click", () => {
+    const pending = state.photos.filter((p) => !idDone(p));
+    if (!pending.length) return;
+    if (!confirm(`Confirm that none of these ${pending.length} pages shows a name, CR/UHID number, phone, address or other identifier? Pages that do must be masked instead.`)) return;
+    pending.forEach((p) => (p.clean = true));
+    renderPhotos();
+  });
+  $("#caseOptions").addEventListener("toggle", () => store.set(LS, "dai_opts_open", $("#caseOptions").open));
+  $("#printDetails").addEventListener("input", (e) => {
+    const k = e.target.id?.replace(/^p_/, "");
+    if (!["name", "doa", "dod"].includes(k)) return;
+    state.patient[k] = e.target.value;
+    // Update the printed header in place so manual edits in the summary are kept.
+    $$(`#doc [data-pf="${k}"]`).forEach((el) => {
+      el.innerHTML = e.target.value.trim() ? esc(e.target.value) : '<span class="writein"></span>';
+    });
+    if (state.docHtml) state.docHtml = $("#doc").innerHTML;
+    saveCase();
+  });
   $("#camInput").addEventListener("change", (e) => { addCase(e.target.files); e.target.value = ""; });
   $("#galInput").addEventListener("change", (e) => { addCase(e.target.files); e.target.value = ""; });
   $("#photoList").addEventListener("click", onPhotoAction);
@@ -1297,6 +1431,7 @@ function bind() {
   });
   $("#finalVerify").addEventListener("change", (e) => setVerified(e.target.checked));
   $("#rxReview").addEventListener("click", onRxClick);
+  $("#attention").addEventListener("click", (e) => { const b = e.target.closest("[data-goto]"); if (b) openSection(b.dataset.goto); });
   $("#rxFinal").addEventListener("click", onRxClick);
   $("#copyBtn").addEventListener("click", async () => {
     if (!$("#finalVerify").checked) return;
@@ -1319,6 +1454,9 @@ function bind() {
 
   // Plans
   $("#plans").addEventListener("click", (e) => { const b = e.target.closest("[data-plan]"); if (b) choosePlan(b.dataset.plan); });
+  $("#meterCard").addEventListener("click", (e) => { const b = e.target.closest("[data-plan]"); if (b) choosePlan(b.dataset.plan); });
+  $("#p_outcome").addEventListener("change", renderOptsSummary);
+  renderWhatsApp();
   $("#planClose").addEventListener("click", () => ($("#planModal").hidden = true));
   $("#planModal").addEventListener("click", (e) => { if (e.target.id === "planModal") $("#planModal").hidden = true; });
 

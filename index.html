@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=12" />
+  <link rel="stylesheet" href="styles.css?v=13" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -115,89 +115,92 @@
   <!-- ============ App ============ -->
   <main id="app" class="app" hidden>
     <nav class="stepper no-print" id="stepper">
-      <button data-step="patient"><span>1</span><em>Start</em></button>
-      <button data-step="photos"><span>2</span><em>Photos</em></button>
-      <button data-step="review"><span>3</span><em>Review</em></button>
-      <button data-step="final"><span>4</span><em>Summary</em></button>
+      <button data-step="photos"><span>1</span><em>Photos</em></button>
+      <button data-step="review"><span>2</span><em>Review</em></button>
+      <button data-step="final"><span>3</span><em>Summary</em></button>
     </nav>
 
-    <!-- STEP 1 -->
-    <section id="step-patient" class="step no-print">
-      <div id="tplOnboard" class="onboard" hidden>
-        <b>Want summaries in your own format?</b>
-        <p>Paste a blank template, or an old discharge summary with names removed, or photograph a printed one. Every summary will then follow that format.</p>
-        <div class="actions tight">
-          <button class="btn" id="obDefault">Use the built-in format</button>
-          <button class="btn primary" id="obSetup">Set up my template</button>
-        </div>
-      </div>
+    <!-- HOME -->
+    <section id="step-patient" class="home no-print">
+      <label class="new-btn" id="newPatientBtn">
+        <span class="cam-ic" aria-hidden="true">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </span>
+        <b>New patient</b>
+        <small>Opens the camera. Snap each page of the case file.</small>
+        <input id="homeCam" type="file" accept="image/*" capture="environment" hidden />
+      </label>
+      <label class="link-btn">or choose photos from the gallery<input id="homeGal" type="file" accept="image/*" multiple hidden /></label>
+      <button class="btn big continue-btn" id="continueBtn" hidden>Continue current patient →</button>
 
-      <div class="tpl-pick">
-        <label>Summary template<select id="p_template"></select></label>
-        <button class="btn" id="manageTplBtn">Manage</button>
-      </div>
+      <div class="meter-card" id="meterCard"></div>
 
-      <h2>New discharge</h2>
-      <p class="hint">Everything is optional. What you type here stays on this device and is never sent to the AI. Age and sex are read from the photos.</p>
-      <div class="grid">
-        <label class="span2"><span>Patient name <small>optional, printed only</small></span><input id="p_name" autocomplete="off" /></label>
-        <label><span>Date of admission <small>optional</small></span><input id="p_doa" placeholder="DD/MM/YYYY" autocomplete="off" /></label>
-        <label><span>Date of discharge <small>optional</small></span><input id="p_dod" placeholder="DD/MM/YYYY" autocomplete="off" /></label>
+      <div class="home-links">
+        <button class="btn" id="manageTplBtn">Summary templates</button>
+        <a class="btn wa-btn" id="waHome" target="_blank" rel="noopener" hidden>WhatsApp support</a>
       </div>
-      <p class="note-line">UHID, IPD number and other identifiers are not collected. They print as blank lines for you to fill by hand.</p>
-
-      <h3 class="sub">Summary length</h3>
-      <div class="len-pick" id="lenPick">
-        <label class="len"><input type="radio" name="len" value="concise" />
-          <b>Concise</b><span>About half a page. For short, uncomplicated stays.</span><em>1 patient</em></label>
-        <label class="len"><input type="radio" name="len" value="standard" />
-          <b>Standard</b><span>About a page. Key days and every change. Suits most stays.</span><em>1 patient</em></label>
-        <label class="len"><input type="radio" name="len" value="detailed" />
-          <b>Detailed</b><span>Full day-by-day account with every value. For long or complex stays.</span><em>2 patients</em></label>
-      </div>
-      <p class="note-line" id="lenNote">All lengths keep the diagnosis, key results, every drug change, complications and discharge drugs.</p>
-
-      <h3 class="sub">Discharge details</h3>
-      <div class="grid">
-        <label class="span2">Outcome
-          <select id="p_outcome">
-            <option value="discharged">Discharged</option>
-            <option value="lama">LAMA</option>
-            <option value="dama">DAMA</option>
-            <option value="referred">Referred</option>
-            <option value="expired">Expired</option>
-          </select>
-        </label>
-        <label>Follow-up after<input id="p_followup" placeholder="e.g. 7 days" /></label>
-        <label>Monitor at home<input id="p_monitor" placeholder="e.g. BP, blood sugar" /></label>
-        <label class="span2"><span>Department <small>optional, overrides the one on the sheets</small></span><input id="p_dept" /></label>
-        <label class="span2"><span>Extra instructions for the AI <small>no names or IDs</small></span><textarea id="p_extra" rows="2" placeholder="e.g. mention nephrology review on 25/09; keep it concise"></textarea></label>
-      </div>
-      <div class="actions"><button class="btn primary" data-go="photos">Next: photos →</button></div>
     </section>
 
-    <!-- STEP 2 -->
+    <!-- PHOTOS -->
     <section id="step-photos" class="step no-print" hidden>
-      <h2>Case-file photos</h2>
-      <p class="hint">Flat, well lit, one page per photo, up to 15. For long stays, pick the admission notes, the last few progress notes, key reports and the drug chart. Before reading, each photo must be either <b>masked</b> (names and IDs blacked out) or marked <b>No IDs</b>.</p>
-      <div class="add-row">
-        <label class="btn primary" id="camBtn">📷 Camera<input id="camInput" type="file" accept="image/*" capture="environment" hidden /></label>
-        <label class="btn" id="galBtn">🖼 Gallery<input id="galInput" type="file" accept="image/*" multiple hidden /></label>
-        <label class="inline">Tag new photos as
-          <select id="defaultKind">
-            <option value="progress">Progress notes</option>
-            <option value="investigation">Investigations</option>
-            <option value="treatment">Treatment chart</option>
-            <option value="admission">Admission notes</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
+      <div class="ph-head">
+        <h2>Case-file pages</h2>
+        <button class="btn small" id="noIdsAll" hidden>No IDs on all</button>
       </div>
+      <p class="hint">Flat, well lit, one page per photo, up to 15. Rotate sideways pages upright (⟳). Each page must be <b>masked</b> (names/IDs blacked out) or marked <b>No IDs</b> before reading.</p>
       <p class="photo-count" id="photoCount"></p>
       <div id="photoList" class="photo-list"></div>
-      <div class="actions">
-        <button class="btn" data-go="patient">← Back</button>
-        <button id="extractBtn" class="btn primary">Read photos with AI →</button>
+      <div class="add-row">
+        <label class="btn primary" id="camBtn">📷 Add page<input id="camInput" type="file" accept="image/*" capture="environment" hidden /></label>
+        <label class="btn" id="galBtn">🖼 Gallery<input id="galInput" type="file" accept="image/*" multiple hidden /></label>
+      </div>
+
+      <details class="opts" id="caseOptions">
+        <summary><b>Case options</b> <span id="optsSummary"></span></summary>
+        <div id="tplOnboard" class="onboard" hidden>
+          <b>Want summaries in your own format?</b>
+          <p>Paste a blank template, or an old discharge summary with names removed, or photograph a printed one. Every summary will then follow that format.</p>
+          <div class="actions tight">
+            <button class="btn" id="obDefault">Use the built-in format</button>
+            <button class="btn primary" id="obSetup">Set up my template</button>
+          </div>
+        </div>
+        <div class="tpl-pick">
+          <label>Summary template<select id="p_template"></select></label>
+        </div>
+
+        <h3 class="sub">Summary length</h3>
+        <div class="len-pick" id="lenPick">
+          <label class="len"><input type="radio" name="len" value="concise" />
+            <b>Concise</b><span>About half a page. For short, uncomplicated stays.</span><em>1 patient</em></label>
+          <label class="len"><input type="radio" name="len" value="standard" />
+            <b>Standard</b><span>About a page. Key days and every change. Suits most stays.</span><em>1 patient</em></label>
+          <label class="len"><input type="radio" name="len" value="detailed" />
+            <b>Detailed</b><span>Full day-by-day account with every value. For long or complex stays.</span><em>2 patients</em></label>
+        </div>
+        <p class="note-line" id="lenNote">All lengths keep the diagnosis, key results, every drug change, complications and discharge drugs.</p>
+
+        <h3 class="sub">Discharge details</h3>
+        <div class="grid">
+          <label class="span2">Outcome
+            <select id="p_outcome">
+              <option value="discharged">Discharged</option>
+              <option value="lama">LAMA</option>
+              <option value="dama">DAMA</option>
+              <option value="referred">Referred</option>
+              <option value="expired">Expired</option>
+            </select>
+          </label>
+          <label>Follow-up after<input id="p_followup" placeholder="e.g. 7 days" /></label>
+          <label>Monitor at home<input id="p_monitor" placeholder="e.g. BP, blood sugar" /></label>
+          <label class="span2"><span>Department <small>optional, overrides the one on the sheets</small></span><input id="p_dept" /></label>
+          <label class="span2"><span>Extra instructions for the AI <small>no names or IDs</small></span><textarea id="p_extra" rows="2" placeholder="e.g. mention nephrology review on 25/09; keep it concise"></textarea></label>
+        </div>
+      </details>
+
+      <div class="actions sticky">
+        <button class="btn" data-go="patient">← Home</button>
+        <button id="extractBtn" class="btn primary">Read pages →</button>
       </div>
     </section>
 
@@ -206,10 +209,12 @@
       <h2>Review extracted data</h2>
       <p class="hint">Compare with the photos (tap a thumbnail to zoom). Yellow means an unclear reading. Only what you keep here is used.</p>
       <div id="thumbStrip" class="thumb-strip"></div>
-      <div id="reviewForm"></div>
+      <div class="attention" id="attention"></div>
       <div id="rxReview"></div>
+      <h3 class="all-head">Everything read from the photos <small>tap a section to check or edit</small></h3>
+      <div id="reviewForm"></div>
       <label class="confirm"><input type="checkbox" id="medConfirm" /> I have checked every drug, dose and frequency against the treatment chart.</label>
-      <div class="actions">
+      <div class="actions sticky">
         <button class="btn" data-go="photos">← Photos</button>
         <button id="generateBtn" class="btn primary">Write discharge summary →</button>
       </div>
@@ -221,6 +226,15 @@
         <div id="docWarn" class="doc-warn" hidden></div>
         <p class="hint">Tap anywhere in the summary to edit it. Highlighted <mark>___</mark> and <mark>[?]</mark> need your attention.</p>
         <label class="inline" id="optTreatmentLabel"><input type="checkbox" id="optTreatment" /> Include the "Treatment given" list</label>
+        <details class="opts print-details" id="printDetails">
+          <summary><b>Name &amp; dates for printing</b> <small>stay on this device, never sent</small></summary>
+          <div class="grid">
+            <label class="span2"><span>Patient name <small>optional</small></span><input id="p_name" autocomplete="off" /></label>
+            <label><span>Date of admission <small>optional</small></span><input id="p_doa" placeholder="DD/MM/YYYY" autocomplete="off" /></label>
+            <label><span>Date of discharge <small>optional</small></span><input id="p_dod" placeholder="DD/MM/YYYY" autocomplete="off" /></label>
+          </div>
+          <p class="note-line">UHID, IPD number and other identifiers are never collected. They print as blank lines to fill by hand.</p>
+        </details>
         <div id="rxFinal"></div>
         <label class="confirm verify"><input type="checkbox" id="finalVerify" /> I have read this draft in full against the case file, corrected it, and take responsibility for it as the treating doctor.</label>
         <div class="actions tight">
@@ -288,12 +302,12 @@
     </section>
 
     <footer class="app-footer no-print">
-      <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · AI drafts must be verified by the treating doctor.
+      <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a><a id="waFoot" target="_blank" rel="noopener" hidden> · WhatsApp support</a> · AI drafts must be verified by the treating doctor.
     </footer>
   </main>
 
   <!-- ============ Overlays ============ -->
-  <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Working…</p></div>
+  <div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyText">Working…</div></div>
 
   <div id="maskModal" class="modal no-print" hidden>
     <div class="modal-bar">
@@ -323,6 +337,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=12"></script>
+  <script type="module" src="app.js?v=13"></script>
 </body>
 </html>

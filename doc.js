@@ -135,7 +135,10 @@ export function buildDoc(P, data, draft, tpl = DEFAULT_TEMPLATE) {
         const f = s.fields && s.fields.length ? s.fields : DEFAULT_TEMPLATE.sections[0].fields;
         const cells = f.map((label) => {
           const v = patientValue(P, label);
-          return `<td><b>${esc(label)}:</b> ${fieldKey(label) === "agesex" ? blank(v) : writeIn(v)}</td>`;
+          const k = fieldKey(label);
+          const val = k === "agesex" ? blank(v) : writeIn(v);
+          // name/doa/dod can be filled later on the final screen without rebuilding the summary
+          return `<td><b>${esc(label)}:</b> ${["name", "doa", "dod"].includes(k) ? `<span data-pf="${k}">${val}</span>` : val}</td>`;
         });
         const rows = [];
         for (let r = 0; r < cells.length; r += 3) rows.push(`<tr>${cells.slice(r, r + 3).join("")}</tr>`);
