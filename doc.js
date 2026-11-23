@@ -30,34 +30,23 @@ const GM = {
   title: "DISCHARGE SUMMARY",
   department: "Department of General Medicine",
   sections: [
-    ptSec(),
-    { heading: "Final Diagnosis", kind: "diagnosis", guidance:
-`As written on the file: main diagnosis first (with cause and severity if documented), then complications, then comorbidities with duration (e.g. "[Type 2 DM] - [duration]").` },
+    { heading: "Patient Details", kind: "patient_details", guidance: "",
+      fields: ["Name", "Age/Sex", "UHID", "IPD No.", "Date of Admission", "Date of Discharge"] },
+    { heading: "Final Diagnosis", kind: "diagnosis",
+      guidance: "Primary diagnosis with associated comorbidities and complications, if any. Primary diagnosis first, then complications, then comorbidities/habits." },
     { heading: "Clinical Summary", kind: "narrative", guidance:
-`Paragraphs in this order. Leave out any line that has nothing documented.
-
-1. Background: "[Age] yr old [male/female], k/c/o [comorbidities with duration] on [regular medications]. [Old illnesses, earlier admissions and procedures, oldest first, with month/year.] [Reports done before this admission, with date and main finding.]"
-
-2. Present illness: "Presented with c/o [complaints with duration]. Pt was apparently alright [duration] back, when he/she developed [first symptom], followed by [next symptoms in the order they came, how they progressed]. [Treatment taken outside / referred from, if written.] No h/o [relevant negatives that are documented]."
-
-3. On admission: "On admission, pt was [conscious, oriented / drowsy], [afebrile / febrile]. BP ___ mmHg, PR ___/min, RR ___/min, temp ___, SpO2 ___% on [RA / O2 at ___ L/min]. GE: [pallor, icterus, cyanosis, clubbing, lymphadenopathy, oedema - as documented]. S/E: CVS - [ ]; RS - [ ]; P/A - [ ]; CNS - [ ]." Add GCS if charted.
-
-4. Workup: "Investigations revealed [Hb, TLC, platelets], [RFT], [LFT], [electrolytes], [other bloods]. [Imaging] showed [findings]. [ECG / ECHO / cultures / serology] - [findings]. With the above clinical picture and reports, pt was diagnosed as a case of [final diagnosis]."
-
-5. Hospital course: "Pt was started on [drugs with doses, IV fluids, O2, blood products]." Then day by day or phase by phase: how the pt was doing, vitals, repeat reports, drug changes, procedures, transfusions, referrals and what they advised, complications and how they were handled. ${COURSE_RULE}
-
-6. End of stay as per OUTCOME. For discharge: "At the time of discharge, pt is [conscious, oriented, afebrile], hemodynamically stable. BP ___ mmHg, PR ___/min, SpO2 ___% on RA. [Taking orally / ambulatory / passing urine adequately - only if documented.] Pt is being discharged in stable condition with the following advice."` },
-    txSec(),
-    medSec(),
-    { heading: "Advice on Discharge", kind: "advice", guidance:
-`Like this:
-1. Continue medications as advised. [Duration of named drugs if documented: "Tab ___ to be continued for ___ days".]
-2. [Drug] on hold till [review / condition]. (one line for each held drug, with reason if written)
-3. [Test] after [interval]. (only monitoring that is documented)
-4. Follow up in [department] OPD after [interval / on date] with reports. ("[Test] report awaited - to be collected and shown in OPD" for each pending report.)
-5. Review SOS in emergency in case of [4 to 6 warning symptoms that fit this case].
-${ADVICE_RULES}` },
-    signSec(),
+`One continuous story in date order, in these paragraphs:
+1. Background, oldest first: "A [age]-year-old [male/female], known case of [comorbidities with duration], on [long-term medications]. [Earlier illnesses, previous hospitalisations, procedures and their outcomes, in date order.] [Investigations done before this admission, with dates and key findings.]" Omit sentences with nothing to say.
+2. Presenting illness: "The patient presented to the [department] with complaints of [chief complaints with duration]. The patient was apparently well [duration] prior to admission, following which he/she developed [symptoms in the order they began, progression, associated symptoms, treatment taken before admission]. There was no history of [relevant negatives]."
+3. "On admission, the patient was [general condition and sensorium]. His/her vitals were as follows: blood pressure ___ mmHg, pulse rate ___/min, respiratory rate ___/min, temperature ___°C and SpO2 ___% on [room air/oxygen]. General examination revealed [relevant findings]. On systemic examination, [important positive and negative findings under CVS, respiratory system, abdomen and CNS]." Include GCS if given.
+4. "Initial investigations revealed [important haematological and biochemical parameters]. Renal function tests showed [findings], liver function tests revealed [findings], and serum electrolytes were [findings]. Relevant imaging, including [USG/CT/MRI/X-ray], demonstrated [findings]. Other investigations, including [ECG, echocardiography, cultures, serology, etc.], were suggestive of [findings]. Based on the clinical presentation, examination and investigation profile, a diagnosis of [final diagnosis] was made." Skip clauses for tests not done.
+5. "The patient was managed with appropriate medical treatment in the form of [specific medications, doses where relevant, supportive treatment, oxygen, IV fluids, antibiotics, steroids, blood products, procedures]. During the hospital stay, the patient was closely monitored clinically and through serial laboratory investigations. [Chronological course: response to treatment, significant changes in investigations, complications, specialist consultations, additional interventions with dates.] The patient showed [clinical/biochemical] improvement following the instituted treatment." (Only claim improvement if documented. The chronological course must be DETAILED: cover every dated note in order with vitals, investigation trends, treatment changes by drug name, procedures, consults and complications — usually 3–6 paragraphs.)
+6. End-of-stay paragraph per OUTCOME. For discharge: "At the time of discharge, the patient was [conscious and oriented/haemodynamically stable/afebrile], with blood pressure ___ mmHg, pulse rate ___/min, respiratory rate ___/min and SpO2 ___% on [room air/oxygen]. The patient was [tolerating oral feeds/ambulating independently/maintaining adequate urine output, as applicable]. In view of the clinical improvement and stable condition, the patient is being discharged with the following medications and advice."` },
+    { heading: "Treatment Given", kind: "treatment_given", guidance: "", optional: true },
+    { heading: "Discharge Medications", kind: "discharge_medications", guidance: "The patient is being discharged on the following medications:" },
+    { heading: "Discharge Advice and Follow-up", kind: "advice", guidance:
+`"The patient and attendants have been counselled regarding the disease and medication compliance. They have been advised to [specific documented instructions: complete/continue named drugs with duration, eye/wound care, drugs kept on hold, diet only if documented] and monitor [parameters only if documented]. The patient has been advised to follow up in the [department] OPD after [interval] with [relevant investigation reports]. They have also been advised to report to the nearest emergency department in case of fever, worsening symptoms, breathlessness, chest pain, altered sensorium, seizures, reduced urine output or any other concerning symptoms." Tailor the warning symptoms to this case. Mention every documented follow-up (each OPD, interval, reports to bring, pending results). Never add generic advice (diet, lifestyle, body weight) that the notes do not mention.` },
+    { heading: "", kind: "signature", guidance: "", fields: ["Junior Resident", "Senior Resident", "Consultant"] },
   ],
 };
 
