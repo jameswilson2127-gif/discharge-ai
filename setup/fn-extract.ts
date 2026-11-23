@@ -142,9 +142,9 @@ async function callGemini(opts: {
       thinkingConfig: thinkingCfg(model, opts.thinkingBudget, level),
     },
   });
-  // When the main model is busy (429/503): retry it twice, then use the backup model
-  // (default gemini-flash-lite-latest) so the doctor doesn't have to tap again.
-  const models = [model, env("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")].filter((m, i, a) => m && a.indexOf(m) === i);
+  // Gemini 3.1 Flash-Lite only. When it is busy (429/503): retry it twice (a backup model can be
+  // set with the GEMINI_FALLBACK_MODEL secret; none by default). The app then retries by itself.
+  const models = [model, env("GEMINI_FALLBACK_MODEL", "")].filter((m, i, a) => m && a.indexOf(m) === i);
   let last = "";
   for (const m of models) {
     model = m; level = opts.thinkingLevel;
