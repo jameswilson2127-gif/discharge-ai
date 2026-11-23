@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=24";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=24";
-import { buildChronology } from "./chrono.js?v=24";
-import { labPanel, consistencyIssues } from "./checks.js?v=24";
+import { CONFIG } from "./config.js?v=25";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=25";
+import { buildChronology } from "./chrono.js?v=25";
+import { labPanel, consistencyIssues } from "./checks.js?v=25";
 
 /* ============================================================
    Setup & helpers
@@ -1328,19 +1328,19 @@ function renderAfterDoc() {
   $("#fbBox").hidden = !!state.fbSent;
   maybeShowGroupInvite();
 }
-/* WhatsApp group invite: slides up ~2.5 s after the home screen (signed in) or a summary appears.
-   Shown at most once a day. Joined → never again. "Later"/× three times → stop asking. */
+/* WhatsApp group invite (until the doctor taps Join):
+   - after EVERY summary, ~2.5 s after it appears;
+   - on the home screen (signed in), at most once a day. */
 let groupTimer = null;
 function maybeShowGroupInvite() {
   clearTimeout(groupTimer);
   if (!CONFIG.WHATSAPP_GROUP_URL || !profile || store.get(LS, "dai_grp2_joined", false)) return;
-  if (Number(store.get(LS, "dai_grp2_dismissed", 0)) >= 3) return;
-  const today = new Date().toISOString().slice(0, 10);
-  if (store.get(LS, "dai_grp2_day", "") === today) return;
   const step = state.step;
+  const today = new Date().toISOString().slice(0, 10);
+  if (step === "patient" && store.get(LS, "dai_grp2_day", "") === today) return;
   groupTimer = setTimeout(() => {
     if (state.step !== step || !$("#busy").hidden) return;
-    store.set(LS, "dai_grp2_day", today);
+    if (step === "patient") store.set(LS, "dai_grp2_day", today);
     const el = $("#groupCard");
     el.hidden = false;
     requestAnimationFrame(() => el.classList.add("show"));
@@ -1352,10 +1352,7 @@ function hideGroupInvite() {
   el.classList.remove("show");
   setTimeout(() => { if (!el.classList.contains("show")) el.hidden = true; }, 300);
 }
-function laterGroupInvite() {
-  store.set(LS, "dai_grp2_dismissed", Number(store.get(LS, "dai_grp2_dismissed", 0)) + 1);
-  hideGroupInvite();
-}
+function laterGroupInvite() { hideGroupInvite(); } // asks again after the next summary
 async function sendFeedback() {
   const comment = $("#fbComment").value.trim().slice(0, 600);
   try {
