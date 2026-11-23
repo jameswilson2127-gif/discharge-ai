@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=23" />
+  <link rel="stylesheet" href="styles.css?v=24" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -264,15 +264,6 @@
           <p id="fbThanks" class="hint" hidden>Thank you! Every message is read.</p>
         </div>
       </div>
-      <div id="groupCard" class="group-pop no-print" role="dialog" aria-label="Join our WhatsApp group" hidden>
-        <button class="x" id="groupClose" aria-label="Close">×</button>
-        <div class="gp-head"><span class="gp-icon">💬</span><b>Join our doctors' WhatsApp group</b></div>
-        <p>Get tips and new features first, and tell us directly what to improve. (Never post patient photos or details in the group.)</p>
-        <div class="gp-actions">
-          <a class="btn wa-join" id="groupJoin" target="_blank" rel="noopener">Join on WhatsApp</a>
-          <button class="btn" id="groupLater">Later</button>
-        </div>
-      </div>
     </section>
 
     <!-- TEMPLATES -->
@@ -330,6 +321,15 @@
   </main>
 
   <!-- ============ Overlays ============ -->
+  <div id="groupCard" class="group-pop no-print" role="dialog" aria-label="Join our WhatsApp group" hidden>
+    <button class="x" id="groupClose" aria-label="Close">×</button>
+    <div class="gp-head"><span class="gp-icon">💬</span><b>Join our doctors' WhatsApp group</b></div>
+    <p>Get tips and new features first, and tell us directly what to improve. (Never post patient photos or details in the group.)</p>
+    <div class="gp-actions">
+      <a class="btn wa-join" id="groupJoin" target="_blank" rel="noopener">Join on WhatsApp</a>
+      <button class="btn" id="groupLater">Later</button>
+    </div>
+  </div>
   <div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyText">Working…</div></div>
 
   <div id="maskModal" class="modal no-print" hidden>
@@ -360,6 +360,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=23"></script>
+  <script type="module" src="app.js?v=24"></script>
 </body>
 </html>

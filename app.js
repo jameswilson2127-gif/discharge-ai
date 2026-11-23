@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=23";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=23";
-import { buildChronology } from "./chrono.js?v=23";
-import { labPanel, consistencyIssues } from "./checks.js?v=23";
+import { CONFIG } from "./config.js?v=24";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=24";
+import { buildChronology } from "./chrono.js?v=24";
+import { labPanel, consistencyIssues } from "./checks.js?v=24";
 
 /* ============================================================
    Setup & helpers
@@ -629,7 +629,8 @@ function showStep(step, { keepEditor = false } = {}) {
   for (const s of ["patient", "photos", "review", "final", "templates"]) $(`#step-${s}`).hidden = s !== step;
   $("#stepper").hidden = step === "patient" || step === "templates";
   if (step === "patient") renderHome();
-  if (step === "final") renderAfterDoc(); else if ($("#groupCard")) { clearTimeout(groupTimer); hideGroupInvite(); }
+  if ($("#groupCard") && step !== "final" && step !== "patient") { clearTimeout(groupTimer); hideGroupInvite(); }
+  if (step === "final") renderAfterDoc();
   if (step === "photos") { renderOptsSummary(); $("#caseOptions").open = !!store.get(LS, "dai_opts_open", false); }
   $$("#stepper button").forEach((b) => {
     b.classList.toggle("on", b.dataset.step === step);
@@ -1304,6 +1305,7 @@ function renderHome() {
   $("#continueBtn").hidden = !has;
   $("#meterCard").innerHTML = meterHtml();
   $("#meterCard").hidden = !profile;
+  maybeShowGroupInvite();
 }
 function waLink() {
   const n = String(CONFIG.WHATSAPP_NUMBER || "").replace(/\D/g, "");
@@ -1326,24 +1328,23 @@ function renderAfterDoc() {
   $("#fbBox").hidden = !!state.fbSent;
   maybeShowGroupInvite();
 }
-/* WhatsApp group invite: slides up 3 s after a summary appears. Joined → never again.
-   "Later"/× → asked again after 5 more summaries, at most 3 times in all. */
+/* WhatsApp group invite: slides up ~2.5 s after the home screen (signed in) or a summary appears.
+   Shown at most once a day. Joined → never again. "Later"/× three times → stop asking. */
 let groupTimer = null;
 function maybeShowGroupInvite() {
   clearTimeout(groupTimer);
-  hideGroupInvite();
-  if (!CONFIG.WHATSAPP_GROUP_URL || store.get(LS, "dai_grp2_joined", false)) return;
-  const n = Number(store.get(LS, "dai_grp2_seen", 0)) + 1;
-  store.set(LS, "dai_grp2_seen", n);
-  const dismissed = Number(store.get(LS, "dai_grp2_dismissed", 0));
-  const next = Number(store.get(LS, "dai_grp2_next", 1));
-  if (dismissed >= 3 || n < next) return;
+  if (!CONFIG.WHATSAPP_GROUP_URL || !profile || store.get(LS, "dai_grp2_joined", false)) return;
+  if (Number(store.get(LS, "dai_grp2_dismissed", 0)) >= 3) return;
+  const today = new Date().toISOString().slice(0, 10);
+  if (store.get(LS, "dai_grp2_day", "") === today) return;
+  const step = state.step;
   groupTimer = setTimeout(() => {
-    if (state.step !== "final") return;
+    if (state.step !== step || !$("#busy").hidden) return;
+    store.set(LS, "dai_grp2_day", today);
     const el = $("#groupCard");
     el.hidden = false;
     requestAnimationFrame(() => el.classList.add("show"));
-  }, 3000);
+  }, 2500);
 }
 function hideGroupInvite() {
   const el = $("#groupCard");
@@ -1353,7 +1354,6 @@ function hideGroupInvite() {
 }
 function laterGroupInvite() {
   store.set(LS, "dai_grp2_dismissed", Number(store.get(LS, "dai_grp2_dismissed", 0)) + 1);
-  store.set(LS, "dai_grp2_next", Number(store.get(LS, "dai_grp2_seen", 0)) + 5);
   hideGroupInvite();
 }
 async function sendFeedback() {
