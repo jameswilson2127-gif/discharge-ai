@@ -45,6 +45,7 @@ const DEFAULT_PRICES: Record<string, [number, number]> = { // USD per 1M tokens 
   "gemini-2.5-flash-lite": [0.10, 0.40],
   "gemini-3.1-flash-lite": [0.25, 1.50],
   "gemini-3.8-flash": [0.75, 3.75], // intro rate; Google doubles it from 1 Jan 2027 (set PRICES_JSON then)
+  "gemini-flash-lite-latest": [0.25, 1.50], // approx. (Flash-Lite family); set PRICES_JSON for exact
 };
 function priceFor(model: string): [number, number] {
   try {
@@ -127,8 +128,8 @@ async function callGemini(opts: {
     },
   });
   // When the main model is busy (429/503): retry it twice, then use the backup model
-  // (default Gemini 3.8 Flash) so the doctor doesn't have to tap again.
-  const models = [model, env("GEMINI_FALLBACK_MODEL", "gemini-3.8-flash")].filter((m, i, a) => m && a.indexOf(m) === i);
+  // (default gemini-flash-lite-latest) so the doctor doesn't have to tap again.
+  const models = [model, env("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")].filter((m, i, a) => m && a.indexOf(m) === i);
   let last = "";
   for (const m of models) {
     model = m; level = opts.thinkingLevel;
