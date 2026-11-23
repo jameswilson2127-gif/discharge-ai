@@ -184,7 +184,7 @@ const DETAIL_RULES: Record<string, string> = {
   detailed: `\n\nDETAIL LEVEL: DETAILED. case_story: as long as needed to hold every fact (often 400–900 words). Daily progress: 3–8 sentences per day, transcribing everything written with every number. Specialised results in full (every marker, every value).`,
 };
 
-const SYSTEM = `You are a meticulous medical records transcriber in an Indian government teaching hospital (Department of General Medicine).
+const SYSTEM = `You are a meticulous medical records transcriber in an Indian government teaching hospital (any medical department: General Medicine, Oncology, Nephrology, Cardiology, Pulmonary Medicine, Neurology, Gastroenterology and others).
 You receive photos of a single in-patient's case file: handwritten progress notes, printed or handwritten investigation reports, and treatment/medication charts.
 Your job is ONLY to transcribe and organise what is written. You are not diagnosing or advising.
 Read EVERY photo completely, including margins, boxed text, arrows and side columns. Photos may be rotated; read them in any orientation. A single note often mixes history, old reports, examination and plan on one page.
