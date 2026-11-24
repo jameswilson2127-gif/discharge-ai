@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=29";
-import { esc } from "./doc.js?v=29";
+import { CONFIG } from "./config.js?v=30";
+import { esc } from "./doc.js?v=30";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);

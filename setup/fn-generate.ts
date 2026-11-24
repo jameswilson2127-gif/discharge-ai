@@ -211,9 +211,9 @@ function cleanTemplate(t: any): { title: string; sections: Section[] } | null {
 }
 
 const LENGTHS: Record<string, string> = {
-  concise: "CONCISE — about half a page in total. Hospital course 2 paragraphs (about 150–300 words) grouping the stay into phases; other narrative sections 1–3 sentences each.",
-  standard: "STANDARD — Hospital course 3–5 paragraphs (about 350–650 words, longer for long stays), going through every dated note in order with its findings, results and treatment changes; other narrative sections at the template's usual length.",
-  detailed: "DETAILED — full chronological account: hospital course 4–8 paragraphs (about 500–1000 words, longer for long stays) covering every dated note and event, with vitals, serial values and each treatment change.",
+  concise: "CONCISE — a brief summary. The hospital course groups the stay into phases and keeps only the key findings, results and treatment changes; other narrative sections 1–3 sentences each.",
+  standard: "STANDARD — the hospital course is as long as the documented content requires: go through every dated note in order with its findings, results and treatment changes. Little documented = short course; a lot documented = long course. Other narrative sections at the template's usual length.",
+  detailed: "DETAILED — the fullest account the documented content allows: every dated note and event, with vitals, serial values, examination changes and each treatment change and its reason. Length scales with the amount documented.",
 };
 
 const SYSTEM = `You write discharge summaries for an Indian teaching hospital, following the department's own template exactly.
@@ -246,7 +246,8 @@ STORY ORDER (CHRONOLOGY)
 HOSPITAL COURSE (most important part — must be DETAILED)
 - Wherever the template describes the course in hospital (a "Hospital Course" section, or the course part of a "Clinical Summary"/"Case Summary"), write a full chronological account. Use the template's opening and closing phrases, but do NOT shorten the course to match the template's length.
 - Cover EVERY dated progress note and event in date order, using dates ("On 12/11/2026…", "On day 3 of admission…") or clearly grouped phases for long stays. For each day or phase include, where documented: clinical status and symptoms; vitals with values and their trend; oxygen/ventilatory support; examination changes; investigations reported, with values and serial trends; treatment started, stopped or modified, naming the drugs (doses where clinically relevant: antibiotics, steroids, insulin, inotropes, anticoagulants, diuretics); fluids, transfusions and procedures; specialist consultations and their advice; complications and how they were managed.
-- Give each dated note its own sentences (usually 2–4): what the patient's status was that day, what was found or reported, and what was done in response and why. Do not compress several days into one line when each day has documented findings or treatment changes; group days only when nothing changed between them.
+- Give each dated note as many sentences as its content needs: what the patient's status was that day, what was found or reported, and what was done in response and why. Do not compress several days into one line when each day has documented findings or treatment changes; group days only when nothing changed between them.
+- LENGTH FOLLOWS CONTENT: there is no fixed word count. The hospital course must be proportional to what the case data documents — a note with many findings, results and changes gets several sentences; a note with one line gets one sentence. Never cut documented detail to keep it short, and never stretch a sparsely documented stay with generic filler.
 - Then describe the state at the end of the stay as required by OUTCOME.
 - Length follows SUMMARY LENGTH (given with the case). Whatever the length, never leave out the diagnosis, key results, a drug started/stopped/changed, a complication, a drug on hold or a discharge drug — a shorter summary only means a briefer narrative. Detail must come only from the case data — never pad with generic sentences.
 
