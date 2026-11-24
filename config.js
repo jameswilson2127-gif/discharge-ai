@@ -12,10 +12,11 @@ export const CONFIG = {
 
   // Display only — real prices are the Razorpay plans (RAZORPAY_PLAN_MONTHLY / _YEARLY secrets).
   PLANS: [
-    { id: "monthly", name: "Monthly", price: "₹199", per: "/ month", note: "Cancel any time" },
-    { id: "yearly",  name: "Yearly",  price: "₹1,499", per: "/ year", note: "≈ ₹125 / month · save 37%", best: true },
+    // Fallback only: real prices are set in Admin → Settings → Pricing.
+    { id: "monthly", name: "Monthly", price: "₹599", per: "/ month", note: "One-time payment · 30 days of Pro" },
+    { id: "yearly",  name: "Yearly",  price: "₹6,999", per: "/ year", note: "≈ ₹583 / month", best: true },
   ],
-  PRO_FEATURES: ["Up to 300 patients a month", "Unlimited custom templates", "Priority support"],
+  PRO_FEATURES: ["Up to 300 patients a month (Detailed counts as 2)", "Unlimited custom templates", "Priority support"],
 
   // ---- Legal (shown in the Terms of Use and Privacy Policy) ----
   // Your full legal name, or your company's name if you register one.

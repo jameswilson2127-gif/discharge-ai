@@ -54,6 +54,24 @@ const INT_SETTINGS: Record<string, [number, number]> = {
   free_extract: [0, 10000], pro_extract: [0, 100000], free_generate: [0, 100000], pro_generate: [0, 1000000],
 };
 
+/** Validates prices from the admin form. Returns the clean object, null if absent, or an error message. */
+export function cleanPricing(p: any): Record<string, unknown> | null | string {
+  if (!p || typeof p !== "object") return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, days] of [["monthly", 30], ["yearly", 365]] as const) {
+    const list = Math.round(Number(p[k]?.list) || 0), price = Math.round(Number(p[k]?.price) || 0);
+    if (list < 1 || list > 100000) return `${k}: regular price must be ₹1–₹1,00,000`;
+    if (price < 0 || price > list) return `${k}: offer price must be empty or not more than the regular price`;
+    out[k] = { list, price, days };
+  }
+  const label = String(p.offer_label ?? "").trim().slice(0, 30);
+  const ends = p.offer_ends ? String(p.offer_ends) : null;
+  if (ends && !/^\d{4}-\d{2}-\d{2}$/.test(ends)) return "Offer end date is not valid";
+  out.offer_label = label;
+  out.offer_ends = ends;
+  return out;
+}
+
 export function isAdmin(email: unknown) {
   const list = env("ADMIN_EMAILS").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   return typeof email === "string" && list.includes(email.toLowerCase());
@@ -131,7 +149,17 @@ Deno.serve(async (req: Request) => {
         const fx = Number(s.usd_inr);
         if (!Number.isFinite(fx) || fx < 1 || fx > 1000) return json({ error: "usd_inr must be 1–1000" }, 400);
         clean.usd_inr = Math.round(fx * 100) / 100;
-        const row = await patch("app_settings", "id=eq.1", { data: clean, updated_at: new Date().toISOString() });
+        const pr = cleanPricing(s.pricing);
+        if (typeof pr === "string") return json({ error: pr }, 400);
+        const data: Record<string, unknown> = { ...clean };
+        if (pr) data.pricing = pr;
+        else {
+          // Keep the saved prices if the request didn't include any.
+          const cur = await fetch(`${env("SUPABASE_URL")}/rest/v1/app_settings?id=eq.1&select=data`, { headers: serviceHeaders() });
+          const old = cur.ok ? (await cur.json())?.[0]?.data?.pricing : null;
+          if (old) data.pricing = old;
+        }
+        const row = await patch("app_settings", "id=eq.1", { data, updated_at: new Date().toISOString() });
         return json({ ok: true, settings: row.data });
       }
 

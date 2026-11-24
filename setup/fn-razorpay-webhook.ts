@@ -1,8 +1,8 @@
 // razorpay-webhook — verifies Razorpay's signature and updates the user's Pro status.
 // Deploy: supabase functions deploy razorpay-webhook --no-verify-jwt
 // Razorpay dashboard → Webhooks → URL: https://<project>.supabase.co/functions/v1/razorpay-webhook
-// Events: subscription.activated, subscription.charged, subscription.cancelled,
-//         subscription.halted, subscription.completed
+// Events: order.paid and payment.captured (one-time Pro payments from the checkout function),
+//         plus subscription.* for older subscribers.
 
 const env = (k: string, d = "") => Deno.env.get(k) ?? d;
 const GRACE_SECONDS = 2 * 24 * 3600; // keep Pro 2 days past period end while renewal processes
@@ -55,6 +55,24 @@ Deno.serve(async (req: Request) => {
 
   let evt: any;
   try { evt = JSON.parse(raw); } catch { return new Response("bad json", { status: 400 }); }
+
+  // One-time payments (checkout function): backup to the in-app verification, e.g. if the
+  // doctor closed the app right after paying. grant_pro_for_order is idempotent.
+  if (evt.event === "order.paid" || evt.event === "payment.captured") {
+    const pay = evt?.payload?.payment?.entity;
+    const orderId = pay?.order_id || evt?.payload?.order?.entity?.id;
+    if (!pay?.id || !orderId) return new Response("ignored", { status: 200 });
+    const r = await fetch(`${env("SUPABASE_URL")}/rest/v1/rpc/grant_pro_for_order`, {
+      method: "POST", headers: serviceHeaders(), body: JSON.stringify({ p_order: orderId, p_payment: pay.id }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      if (/unknown order/.test(t)) return new Response("ignored", { status: 200 }); // not ours (e.g. a subscription invoice)
+      console.error("grant", r.status, t);
+      return new Response("error", { status: 500 }); // Razorpay will retry
+    }
+    return new Response("ok", { status: 200 });
+  }
 
   const sub = evt?.payload?.subscription?.entity;
   const userId = sub?.notes?.user_id;

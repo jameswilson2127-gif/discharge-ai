@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=26";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=26";
-import { buildChronology } from "./chrono.js?v=26";
-import { labPanel, consistencyIssues } from "./checks.js?v=26";
+import { CONFIG } from "./config.js?v=27";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=27";
+import { buildChronology } from "./chrono.js?v=27";
+import { labPanel, consistencyIssues } from "./checks.js?v=27";
 
 /* ============================================================
    Setup & helpers
@@ -116,8 +116,7 @@ async function loadProfile() {
   if (!limitsLoaded) {
     limitsLoaded = true;
     const { data: lim } = await sb.rpc("public_limits");
-    if (lim?.free_extract >= 0) CONFIG.FREE_MONTHLY_LIMIT = lim.free_extract;
-    if (lim?.pro_extract >= 0) CONFIG.PRO_MONTHLY_LIMIT = lim.pro_extract;
+    applyLimits(lim);
   }
   const { data, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
   if (!error) profile = data;
@@ -357,35 +356,49 @@ function loadScript(src) {
 }
 
 function upgrade() {
+  clearTimeout(groupTimer); hideGroupInvite(); // never cover the payment sheet
   const feats = CONFIG.PRO_FEATURES || [];
   $("#planFeatures").innerHTML = feats.map((f) => `<li>${esc(f)}</li>`).join("");
-  $("#plans").innerHTML = (CONFIG.PLANS || []).map((p) => `
+  $("#plans").innerHTML = plansView().map((p) => `
     <button class="plan ${p.best ? "best" : ""}" data-plan="${esc(p.id)}">
       ${p.best ? '<span class="tag">Best value</span>' : ""}
-      <span><span class="pn">${esc(p.name)}</span><br><span class="pnote">${esc(p.note || "")}</span></span>
-      <span class="pp">${esc(p.price)} <small>${esc(p.per || "")}</small></span>
+      <span><span class="pn">${esc(p.name)}</span>${p.label ? ` <span class="offer">${esc(p.label)}</span>` : ""}<br><span class="pnote">${esc(p.note || "")}</span></span>
+      <span class="pp">${p.priceHtml} <small>${esc(p.per || "")}</small></span>
     </button>`).join("");
   $("#planModal").hidden = false;
 }
 
 async function choosePlan(planId) {
-  const plan = (CONFIG.PLANS || []).find((p) => p.id === planId);
+  const plan = plansView().find((p) => p.id === planId);
   $("#planModal").hidden = true;
   busy("Opening payment");
   try {
-    const r = await api("subscribe", { plan: planId });
+    const r = await api("checkout", { action: "create", plan: planId });
     await loadScript("https://checkout.razorpay.com/v1/checkout.js");
     busy(false);
     const rz = new window.Razorpay({
       key: r.key_id,
-      subscription_id: r.subscription_id,
+      order_id: r.order_id,
+      amount: r.amount,
+      currency: r.currency || "INR",
       name: CONFIG.APP_NAME,
-      description: plan ? `Pro ${plan.name} — ${plan.price} ${plan.per}` : "Pro",
+      description: plan ? `Pro ${plan.name.toLowerCase()}: ${r.days} days` : "Pro",
       prefill: { email: session?.user?.email || "" },
       theme: { color: "#0f4c4a" },
       // Show UPI first (most Indian users pay this way); other methods stay available.
       config: { display: { blocks: { upi: { name: "Pay with UPI", instruments: [{ method: "upi" }] } }, sequence: ["block.upi"], preferences: { show_default_blocks: true } } },
-      handler: () => { toast("Payment received. Activating Pro…", false, 6000); pollPro(); },
+      handler: async (resp) => {
+        busy("Activating Pro");
+        try {
+          await api("checkout", { action: "verify", order_id: resp.razorpay_order_id, payment_id: resp.razorpay_payment_id, signature: resp.razorpay_signature });
+          await loadProfile();
+          toast(isPro() ? "Pro is active. Thank you!" : "Payment received. Activating Pro…", false, 6000);
+          if (!isPro()) pollPro();
+        } catch (e) {
+          toast("Payment received. Pro will activate within a few minutes.", false, 7000);
+          pollPro();
+        } finally { busy(false); }
+      },
     });
     rz.open();
   } catch (e) {
@@ -1331,11 +1344,13 @@ function meterHtml() {
   if (!u) return "";
   const pct = u.limit ? Math.round((u.used / u.limit) * 100) : 0;
   const cls = pct >= 100 ? "full" : pct >= 80 ? "warn" : "";
-  const plans = (CONFIG.PLANS || []).map((p) => `<button class="btn ${p.best ? "primary" : ""}" data-plan="${esc(p.id)}">${esc(p.name)} · ${esc(p.price)}</button>`).join("");
+  const plans = plansView().map((p) => `<button class="btn ${p.best ? "primary" : ""}" data-plan="${esc(p.id)}">${esc(p.name)} · ${p.priceHtml}</button>`).join("");
+  const daysLeft = u.pro && profile?.pro_until ? Math.ceil((new Date(profile.pro_until) - Date.now()) / 86400e3) : null;
+  const renew = daysLeft !== null && daysLeft <= 7;
   return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients this month<span>${u.pro ? "Pro" : "Free"}</span></div>
     <div class="meter ${cls}"><i style="width:${Math.min(pct, 100)}%"></i></div>
     <p class="meter-note">${u.left} left · Detailed counts as 2 · resets on the 1st</p>
-    ${u.pro ? "" : `<div class="meter-up"><span>Upgrade with UPI, cards or net banking</span><div class="plan-btns">${plans}</div></div>`}`;
+    ${u.pro && !renew ? "" : `<div class="meter-up"><span>${renew ? `Pro ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}. Renew (days are added on top)` : "Upgrade with UPI, cards or net banking"}</span><div class="plan-btns">${plans}</div></div>`}`;
 }
 function renderHome() {
   const has = state.photos.length || state.data || state.draft;
@@ -1376,7 +1391,7 @@ function maybeShowGroupInvite() {
   const today = new Date().toISOString().slice(0, 10);
   if (step === "patient" && store.get(LS, "dai_grp2_day", "") === today) return;
   groupTimer = setTimeout(() => {
-    if (state.step !== step || !$("#busy").hidden) return;
+    if (state.step !== step || !$("#busy").hidden || !$("#planModal").hidden || document.querySelector(".ask-wrap")) return;
     if (step === "patient") store.set(LS, "dai_grp2_day", today);
     const el = $("#groupCard");
     el.hidden = false;
@@ -1499,14 +1514,14 @@ function renderLanding() {
   $("#freeLine").textContent = `Free for ${free} patients a month`;
   $("#yr").textContent = new Date().getFullYear();
   $("#contactLink").href = `mailto:${CONFIG.CONTACT_EMAIL || ""}`;
-  const plans = CONFIG.PLANS || [];
+  const plans = plansView();
   const freeCard = `<div class="price-card">
       <h3>Free</h3><div class="price">₹0</div><p class="pnote">To try it out</p>
       <ul><li>${free} patients a month</li><li>Built-in General Medicine format</li><li>All privacy safeguards</li></ul>
       <button class="btn big" data-signin>Start free</button></div>`;
   const pro = plans.map((p) => `<div class="price-card ${p.best ? "best" : ""}">
       ${p.best ? '<span class="tag">Best value</span>' : ""}
-      <h3>Pro ${esc(p.name.toLowerCase())}</h3><div class="price">${esc(p.price)} <small>${esc(p.per || "")}</small></div><p class="pnote">${esc(p.note || "")}</p>
+      <h3>Pro ${esc(p.name.toLowerCase())}${p.label ? ` <span class="offer">${esc(p.label)}</span>` : ""}</h3><div class="price">${p.priceHtml} <small>${esc(p.per || "")}</small></div><p class="pnote">${esc(p.note || "")}</p>
       <ul>${(CONFIG.PRO_FEATURES || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
       <button class="btn big ${p.best ? "primary" : ""}" data-signin>Get started</button></div>`).join("");
   $("#priceGrid").innerHTML = freeCard + pro;
@@ -1514,7 +1529,39 @@ function renderLanding() {
 
 async function loadPublicLimits() {
   const { data: lim } = await sb.rpc("public_limits");
-  if (lim?.free_extract >= 0) { CONFIG.FREE_MONTHLY_LIMIT = lim.free_extract; renderLanding(); renderAccount(); }
+  if (lim) { applyLimits(lim); renderLanding(); renderAccount(); if (state.step === "patient") renderHome(); }
+}
+function applyLimits(lim) {
+  if (lim?.free_extract >= 0) CONFIG.FREE_MONTHLY_LIMIT = lim.free_extract;
+  if (lim?.pro_extract >= 0) CONFIG.PRO_MONTHLY_LIMIT = lim.pro_extract;
+  if (lim?.pricing) CONFIG.PRICING = lim.pricing;
+}
+
+/* Plans as shown to doctors: prices come from admin settings (CONFIG.PRICING), with the
+   regular price crossed out while an offer runs. Falls back to config.js if not loaded yet. */
+const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
+function plansView() {
+  const P = CONFIG.PRICING;
+  const meta = { monthly: { name: "Monthly", per: "/ month" }, yearly: { name: "Yearly", per: "/ year" } };
+  if (!P) return (CONFIG.PLANS || []).map((p) => ({ ...p, priceHtml: esc(p.price), label: "" }));
+  const today = new Date().toISOString().slice(0, 10);
+  const offerOn = !P.offer_ends || today <= P.offer_ends;
+  const cur = (k) => { const x = P[k] || {}; return offerOn && Number(x.price) > 0 ? Number(x.price) : Number(x.list || x.price || 0); };
+  const out = [];
+  for (const id of ["monthly", "yearly"]) {
+    const x = P[id];
+    if (!x || !cur(id)) continue;
+    const price = cur(id), list = Number(x.list) || 0, struck = offerOn && list > price;
+    let note = id === "monthly" ? "One-time payment · 30 days of Pro" : `≈ ${inr(price / 12)} / month`;
+    if (id === "yearly" && cur("monthly")) {
+      const save = Math.round((1 - price / (cur("monthly") * 12)) * 100);
+      if (save >= 10) note += ` · save ${save}%`;
+    }
+    out.push({ id, ...meta[id], best: id === "yearly", price: inr(price), list: struck ? inr(list) : "",
+      priceHtml: `${struck ? `<s class="was">${inr(list)}</s> ` : ""}${inr(price)}`,
+      label: struck && P.offer_label ? P.offer_label : "", note });
+  }
+  return out;
 }
 
 /* ============================================================
