@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=30";
-import { esc } from "./doc.js?v=30";
+import { CONFIG } from "./config.js?v=31";
+import { esc } from "./doc.js?v=31";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);
@@ -300,7 +300,7 @@ async function showTab(t) {
   $$("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   for (const x of ["overview", "users", "usage", "settings"]) $(`#tab-${x}`).hidden = x !== t;
   if (t === "settings") return fillSettings();
-  if (loaded[t] && t !== "overview") return;
+  if (loaded[t] && t === "users") return; // overview and usage reload every time so new discharges show up
   busy("Loading");
   try {
     if (t === "overview") await loadOverview();
