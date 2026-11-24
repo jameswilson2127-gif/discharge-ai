@@ -6,7 +6,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=28" />
+  <link rel="stylesheet" href="styles.css?v=29" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -127,7 +127,7 @@
           <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </span>
         <b>New patient</b>
-        <small>Opens the camera. Snap each page of the case file.</small>
+        <small>Opens the camera. Snap each page of the case file, then tap Done.</small>
         <input id="homeCam" type="file" accept="image/*" capture="environment" hidden />
       </label>
       <label class="link-btn">or choose photos from the gallery<input id="homeGal" type="file" accept="image/*" multiple hidden /></label>
@@ -358,8 +358,26 @@
     </div>
   </div>
 
+  <!-- In-page camera: stays inside Chrome, so Android can't close the tab while the camera is open -->
+  <div id="camModal" class="cam-modal no-print" hidden>
+    <video id="camVideo" playsinline muted autoplay></video>
+    <div class="cam-top">
+      <button class="cam-x" id="camClose" aria-label="Close camera">×</button>
+      <span id="camCount">0 pages</span>
+      <button class="cam-torch" id="camTorch" hidden aria-label="Flash">⚡</button>
+    </div>
+    <div class="cam-hint" id="camHint">Fill the screen with one page · hold steady</div>
+    <div class="cam-strip" id="camStrip"></div>
+    <div class="cam-bottom">
+      <button class="cam-alt" id="camNative">Phone camera</button>
+      <button class="cam-shutter" id="camShutter" aria-label="Take photo"><i></i></button>
+      <button class="cam-done" id="camDone" disabled>Done</button>
+    </div>
+    <div class="cam-flash" id="camFlash"></div>
+  </div>
+
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=28"></script>
+  <script type="module" src="app.js?v=29"></script>
 </body>
 </html>

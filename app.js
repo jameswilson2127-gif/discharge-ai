@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=28";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=28";
-import { buildChronology } from "./chrono.js?v=28";
-import { labPanel, consistencyIssues } from "./checks.js?v=28";
+import { CONFIG } from "./config.js?v=29";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=29";
+import { buildChronology } from "./chrono.js?v=29";
+import { labPanel, consistencyIssues } from "./checks.js?v=29";
 
 /* ============================================================
    Setup & helpers
@@ -713,6 +713,85 @@ async function compress(file, max = 1600, quality = 0.75) {
 }
 
 let adding = false; // stops two quick picks from both seeing the same free space
+/* ============================================================
+   In-page camera (getUserMedia). The phone's camera app can make Android close Chrome's tab
+   on low-memory phones ("Unable to complete previous operation due to low memory"), losing
+   the photo. Shooting inside the page avoids that and lets doctors snap pages back to back.
+   ============================================================ */
+const canInPageCam = () => !!(navigator.mediaDevices?.getUserMedia) && window.isSecureContext;
+const cam = { stream: null, files: [], room: 0, done: null, nativeSel: "", track: null, torch: false };
+async function openCam(room, done, nativeSel) {
+  if (room <= 0) return toast(`Maximum ${MAX_CASE_PHOTOS} photos. Remove one to add another.`, true);
+  Object.assign(cam, { files: [], room, done, nativeSel, torch: false });
+  $("#camStrip").innerHTML = ""; updateCamCount();
+  $("#camModal").hidden = false;
+  document.body.classList.add("cam-open");
+  try {
+    cam.stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } },
+    });
+    const v = $("#camVideo");
+    v.srcObject = cam.stream;
+    await v.play().catch(() => {});
+    cam.track = cam.stream.getVideoTracks()[0];
+    const caps = cam.track.getCapabilities?.() || {};
+    $("#camTorch").hidden = !caps.torch;
+    // Continuous autofocus where supported (sharper handwriting).
+    if (caps.focusMode?.includes?.("continuous")) cam.track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
+  } catch (e) {
+    console.warn("camera", e);
+    closeCam(false);
+    toast(e?.name === "NotAllowedError" ? "Camera permission was blocked. Opening the phone camera instead." : "Opening the phone camera instead.", false, 4000);
+    $(nativeSel)?.click();
+  }
+}
+function updateCamCount() {
+  const n = cam.files.length;
+  $("#camCount").textContent = `${n} page${n === 1 ? "" : "s"}${n >= cam.room ? " · maximum reached" : ""}`;
+  $("#camDone").disabled = !n;
+  $("#camDone").textContent = n ? `Done (${n})` : "Done";
+  $("#camShutter").disabled = n >= cam.room;
+}
+async function snapCam() {
+  if (!cam.track || cam.files.length >= cam.room) return;
+  $("#camShutter").disabled = true;
+  const fl = $("#camFlash"); fl.classList.remove("go"); void fl.offsetWidth; fl.classList.add("go");
+  try {
+    let blob = null;
+    // Full-resolution still where the browser supports it (Chrome on Android); else a video frame.
+    if ("ImageCapture" in window) {
+      try { blob = await Promise.race([new ImageCapture(cam.track).takePhoto(), new Promise((_, no) => setTimeout(() => no(new Error("slow")), 4000))]); } catch { blob = null; }
+    }
+    const src = blob ? await createImageBitmap(blob) : $("#camVideo");
+    const w0 = blob ? src.width : src.videoWidth, h0 = blob ? src.height : src.videoHeight;
+    const k = Math.min(1, 2600 / Math.max(w0, h0));
+    const c = document.createElement("canvas");
+    c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+    if (blob) src.close?.();
+    const out = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.9));
+    const file = new File([out], `page-${Date.now()}.jpg`, { type: "image/jpeg" });
+    cam.files.push(file);
+    const t = document.createElement("img");
+    t.src = URL.createObjectURL(out);
+    $("#camStrip").appendChild(t);
+    $("#camStrip").scrollLeft = 1e6;
+  } catch (e) {
+    console.warn(e); toast("Could not take the photo. Try again.", true);
+  } finally { updateCamCount(); }
+}
+function closeCam(deliver) {
+  cam.stream?.getTracks().forEach((t) => t.stop());
+  cam.stream = null; cam.track = null;
+  $("#camVideo").srcObject = null;
+  $$("#camStrip img").forEach((i) => URL.revokeObjectURL(i.src));
+  $("#camModal").hidden = true;
+  document.body.classList.remove("cam-open");
+  const files = cam.files; cam.files = [];
+  if (deliver && files.length) cam.done?.(files);
+}
+
 async function addFiles(files, target, limit, kind) {
   const list = [...files].filter((f) => f.type.startsWith("image/"));
   if (!list.length || adding) return false;
@@ -1598,13 +1677,25 @@ function bind() {
   // Case photos
   const addCase = async (files) => { if (await addFiles(files, state.photos, MAX_CASE_PHOTOS, "other")) renderPhotos(); };
   // Home: one big button opens the camera; a new case starts from the first photo.
-  const startCase = async (files) => {
+  const startCase = async (files, confirmed = false) => {
     if (!files?.length) return;
-    if ((state.photos.length || state.data || state.draft) && !confirm("Start a new patient? The current one will be cleared from this device.")) return;
+    if (!confirmed && (state.photos.length || state.data || state.draft) && !confirm("Start a new patient? The current one will be cleared from this device.")) return;
     if (state.photos.length || state.data || state.draft) clearCase();
     if (await addFiles(files, state.photos, MAX_CASE_PHOTOS, "other")) { renderPhotos(); showStep("photos"); }
   };
   $("#homeCam").addEventListener("change", (e) => { startCase(e.target.files); e.target.value = ""; });
+  // Prefer the in-page camera (page stays alive); the phone's camera app is the fallback.
+  $("#newPatientBtn").addEventListener("click", (e) => {
+    if (e.target.id === "homeCam" || !canInPageCam()) return;
+    e.preventDefault();
+    if ((state.photos.length || state.data || state.draft) && !confirm("Start a new patient? The current one will be cleared from this device.")) return;
+    openCam(MAX_CASE_PHOTOS, (files) => startCase(files, true), "#homeCam");
+  });
+  $("#camBtn").addEventListener("click", (e) => {
+    if (e.target.id === "camInput" || !canInPageCam() || $("#camInput").disabled) return;
+    e.preventDefault();
+    openCam(MAX_CASE_PHOTOS - state.photos.length, addCase, "#camInput");
+  });
   $("#homeGal").addEventListener("change", (e) => { startCase(e.target.files); e.target.value = ""; });
   $("#continueBtn").addEventListener("click", () => showStep(state.draft ? "final" : state.data ? "review" : "photos"));
   $("#noIdsAll").addEventListener("click", () => {
@@ -1671,6 +1762,22 @@ function bind() {
     if (fbRating > 0 && !$("#fbComment").value) $("#fbComment").focus();
   });
   $("#fbSend").addEventListener("click", sendFeedback);
+  $("#camShutter").addEventListener("click", snapCam);
+  $("#camDone").addEventListener("click", () => closeCam(true));
+  $("#camClose").addEventListener("click", () => {
+    if (cam.files.length && !confirm(`Discard the ${cam.files.length} page(s) you just took?`)) return;
+    closeCam(false);
+  });
+  $("#camNative").addEventListener("click", () => {
+    // Pages already taken are kept; the phone camera then only adds more.
+    const sel = cam.files.length ? "#camInput" : cam.nativeSel;
+    closeCam(true); $(sel)?.click();
+  });
+  $("#camTorch").addEventListener("click", () => {
+    cam.torch = !cam.torch;
+    cam.track?.applyConstraints({ advanced: [{ torch: cam.torch }] }).catch(() => {});
+    $("#camTorch").classList.toggle("on", cam.torch);
+  });
   $("#groupClose").addEventListener("click", laterGroupInvite);
   $("#groupLater").addEventListener("click", laterGroupInvite);
   $("#groupJoin").addEventListener("click", () => { store.set(LS, "dai_grp2_joined", true); setTimeout(hideGroupInvite, 400); });
