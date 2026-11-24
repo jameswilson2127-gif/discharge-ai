@@ -55,16 +55,19 @@ const INT_SETTINGS: Record<string, [number, number]> = {
 };
 
 /** Validates prices from the admin form. Returns the clean object, null if absent, or an error message. */
-export function cleanPricing(p: any): Record<string, unknown> | null | string {
+export function cleanPricing(p: any, old: any = {}): Record<string, unknown> | null | string {
   if (!p || typeof p !== "object") return null;
   const out: Record<string, unknown> = {};
   for (const [k, days] of [["pro100", 30], ["monthly", 30], ["yearly", 365]] as const) {
-    const list = Math.round(Number(p[k]?.list) || 0), price = Math.round(Number(p[k]?.price) || 0);
-    const limit = Math.round(Number(p[k]?.limit) || 0);
+    // A plan missing from the form (e.g. an older cached admin page) keeps its saved values.
+    const src = p[k] && typeof p[k] === "object" ? { ...(old?.[k] ?? {}), ...p[k] } : old?.[k];
+    if (!src) continue;
+    const list = Math.round(Number(src.list) || 0), price = Math.round(Number(src.price) || 0);
+    const limit = Math.round(Number(src.limit) || Number(old?.[k]?.limit) || (k === "pro100" ? 100 : 300));
     if (list < 1 || list > 100000) return `${k}: regular price must be ₹1–₹1,00,000`;
     if (price < 0 || price > list) return `${k}: offer price must be empty or not more than the regular price`;
     if (limit < 1 || limit > 100000) return `${k}: patients / month must be 1–100000`;
-    out[k] = { list, price, days, limit, enabled: p[k]?.enabled !== false };
+    out[k] = { list, price, days, limit, enabled: src.enabled !== false };
   }
   const label = String(p.offer_label ?? "").trim().slice(0, 30);
   const ends = p.offer_ends ? String(p.offer_ends) : null;
@@ -151,16 +154,13 @@ Deno.serve(async (req: Request) => {
         const fx = Number(s.usd_inr);
         if (!Number.isFinite(fx) || fx < 1 || fx > 1000) return json({ error: "usd_inr must be 1–1000" }, 400);
         clean.usd_inr = Math.round(fx * 100) / 100;
-        const pr = cleanPricing(s.pricing);
+        const cur = await fetch(`${env("SUPABASE_URL")}/rest/v1/app_settings?id=eq.1&select=data`, { headers: serviceHeaders() });
+        const old = cur.ok ? (await cur.json())?.[0]?.data?.pricing ?? null : null;
+        const pr = cleanPricing(s.pricing, old ?? {});
         if (typeof pr === "string") return json({ error: pr }, 400);
         const data: Record<string, unknown> = { ...clean };
         if (pr) data.pricing = pr;
-        else {
-          // Keep the saved prices if the request didn't include any.
-          const cur = await fetch(`${env("SUPABASE_URL")}/rest/v1/app_settings?id=eq.1&select=data`, { headers: serviceHeaders() });
-          const old = cur.ok ? (await cur.json())?.[0]?.data?.pricing : null;
-          if (old) data.pricing = old;
-        }
+        else if (old) data.pricing = old; // keep the saved prices if the request didn't include any
         const row = await patch("app_settings", "id=eq.1", { data, updated_at: new Date().toISOString() });
         return json({ ok: true, settings: row.data });
       }
