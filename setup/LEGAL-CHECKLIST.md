@@ -4,7 +4,7 @@
 
 1. **Supabase → SQL Editor:** run `4-legal.sql` once.
 2. **Supabase → Edge Functions → Secrets:** add `TERMS_VERSION` = `1`.
-   Also set `ALLOWED_ORIGIN` to your site's address (e.g. `https://jameswilson2127-gif.github.io`) instead of `*`.
+   Also set `ALLOWED_ORIGIN` to your site's address (e.g. `https://dischargeai.in`) instead of `*`.
 3. **Edge Functions:** paste and redeploy `extract`, `generate`, `template` from the updated `fn-*.ts` files.
    Create a new function named **`account`** from `fn-account.ts` (turn off "Verify JWT", like the others).
 4. **GitHub:** upload the changed site files: `index.html`, `app.js`, `doc.js`, `styles.css`, `config.js`,
