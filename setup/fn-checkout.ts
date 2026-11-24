@@ -1,6 +1,6 @@
 // checkout — one-time Pro payments with Razorpay Orders. The price comes from admin settings
 // (app_settings.data.pricing), so prices can change without touching Razorpay.
-//   POST { action: "create", plan: "monthly" | "yearly" }  → { order_id, key_id, amount, plan, ... }
+//   POST { action: "create", plan: "pro100" | "monthly" | "yearly" }  → { order_id, key_id, amount, plan, ... }
 //   POST { action: "verify", order_id, payment_id, signature } → { ok, pro_until }
 // Pro is granted only after Razorpay's signature is verified (here, or by the webhook).
 // Deploy: supabase functions deploy checkout --no-verify-jwt
@@ -55,7 +55,7 @@ function safeEqual(a: string, b: string) {
 /** Current price for a plan in rupees: the offer price while the offer runs, else the regular price. */
 export function priceFor(pricing: any, plan: string, today = new Date().toISOString().slice(0, 10)) {
   const p = pricing?.[plan];
-  if (!p) return null;
+  if (!p || p.enabled === false) return null; // switched off in admin (e.g. yearly "coming soon")
   const ends = typeof pricing?.offer_ends === "string" && pricing.offer_ends ? pricing.offer_ends : "";
   const offerOn = Number(p.price) > 0 && (!ends || today <= ends);
   const rupees = Math.round(offerOn ? Number(p.price) : Number(p.list || p.price));
@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (b.action === "create") {
-      const plan = b.plan === "yearly" ? "yearly" : "monthly";
+      const plan = ["pro100", "monthly", "yearly"].includes(b.plan) ? b.plan : "monthly";
       const rows = await rest("app_settings?id=eq.1&select=data");
       const price = priceFor(rows?.[0]?.data?.pricing, plan);
       if (!price) return json({ error: "This plan is not available right now." }, 400);

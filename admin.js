@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=27";
-import { esc } from "./doc.js?v=27";
+import { CONFIG } from "./config.js?v=28";
+import { esc } from "./doc.js?v=28";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);
@@ -253,27 +253,34 @@ async function loadUserCosts(reset = true) {
 
 /* ---------- settings ---------- */
 const SKEYS = ["free_extract", "pro_extract", "free_generate", "pro_generate", "usd_inr"];
+const PLAN_KEYS = [["pro100", 30], ["monthly", 30], ["yearly", 365]];
 function fillSettings() {
   for (const k of SKEYS) $(`#s_${k}`).value = settings?.[k] ?? "";
   const P = settings?.pricing || {};
-  $("#p_m_list").value = P.monthly?.list ?? ""; $("#p_m_price").value = P.monthly?.price ?? "";
-  $("#p_y_list").value = P.yearly?.list ?? "";  $("#p_y_price").value = P.yearly?.price ?? "";
+  for (const [k] of PLAN_KEYS) {
+    $(`#p_${k}_list`).value = P[k]?.list ?? ""; $(`#p_${k}_price`).value = P[k]?.price ?? "";
+    $(`#p_${k}_limit`).value = P[k]?.limit ?? ""; $(`#p_${k}_enabled`).checked = P[k]?.enabled !== false;
+  }
   $("#p_label").value = P.offer_label ?? ""; $("#p_ends").value = P.offer_ends ?? "";
   previewPrices();
 }
 function readPricing() {
   const num = (id) => ($(id).value === "" ? 0 : Math.round(Number($(id).value)));
-  return {
-    offer_label: $("#p_label").value.trim().slice(0, 30), offer_ends: $("#p_ends").value || null,
-    monthly: { list: num("#p_m_list"), price: num("#p_m_price"), days: 30 },
-    yearly:  { list: num("#p_y_list"), price: num("#p_y_price"), days: 365 },
-  };
+  const out = { offer_label: $("#p_label").value.trim().slice(0, 30), offer_ends: $("#p_ends").value || null };
+  for (const [k, days] of PLAN_KEYS) {
+    out[k] = { list: num(`#p_${k}_list`), price: num(`#p_${k}_price`), limit: num(`#p_${k}_limit`), days, enabled: $(`#p_${k}_enabled`).checked };
+  }
+  return out;
 }
 function previewPrices() {
   const P = readPricing();
   const on = !P.offer_ends || new Date().toISOString().slice(0, 10) <= P.offer_ends;
-  const show = (x, per) => { const pay = on && x.price > 0 ? x.price : x.list; return `<b>₹${int(pay)}</b>${on && x.price > 0 && x.list > x.price ? ` <s>₹${int(x.list)}</s>` : ""} ${per}`; };
-  $("#pricePreview").innerHTML = `Doctors see now: Monthly ${show(P.monthly, "/ month")} · Yearly ${show(P.yearly, "/ year")}${on && P.offer_label ? ` · “${esc(P.offer_label)}”` : ""}`;
+  const show = (x, name, per) => {
+    if (!x.enabled) return `${name}: <i>Coming soon</i>`;
+    const pay = on && x.price > 0 ? x.price : x.list;
+    return `${name}: <b>₹${int(pay)}</b>${on && x.price > 0 && x.list > x.price ? ` <s>₹${int(x.list)}</s>` : ""} ${per} (${int(x.limit)} patients/month)`;
+  };
+  $("#pricePreview").innerHTML = `Doctors see now: ${show(P.pro100, `Pro ${int(P.pro100.limit)}`, "/ month")} · ${show(P.monthly, `Pro ${int(P.monthly.limit)}`, "/ month")} · ${show(P.yearly, "Pro yearly", "/ year")}${on && P.offer_label ? ` · “${esc(P.offer_label)}”` : ""}`;
 }
 async function saveSettings() {
   const s = Object.fromEntries(SKEYS.map((k) => [k, Number($(`#s_${k}`).value)]));
@@ -325,7 +332,7 @@ async function init() {
   $("#userList").addEventListener("click", onUserAction);
   $("#days").addEventListener("change", () => loadUsage().catch((e) => toast(e.message, true)));
   $("#saveSettings").addEventListener("click", saveSettings);
-  for (const id of ["#p_m_list", "#p_m_price", "#p_y_list", "#p_y_price", "#p_label", "#p_ends"]) $(id).addEventListener("input", previewPrices);
+  $("#tab-settings").addEventListener("input", (e) => { if (e.target.id?.startsWith("p_")) previewPrices(); });
   $("#moreCases").addEventListener("click", () => loadCases(false).catch((e) => toast(e.message, true)));
   $("#moreUserCosts").addEventListener("click", () => loadUserCosts(false).catch((e) => toast(e.message, true)));
   showTab("overview");

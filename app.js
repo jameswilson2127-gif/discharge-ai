@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=27";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=27";
-import { buildChronology } from "./chrono.js?v=27";
-import { labPanel, consistencyIssues } from "./checks.js?v=27";
+import { CONFIG } from "./config.js?v=28";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=28";
+import { buildChronology } from "./chrono.js?v=28";
+import { labPanel, consistencyIssues } from "./checks.js?v=28";
 
 /* ============================================================
    Setup & helpers
@@ -140,7 +140,7 @@ function renderAccount() {
   const email = session.user.email || "";
   let plan;
   if (isPro()) {
-    const kind = profile.plan === "yearly" ? "Pro yearly" : "Pro";
+    const kind = profile.plan === "yearly" ? "Pro yearly" : `Pro ${proLimit()}`;
     plan = `${kind} · till ${new Date(profile.pro_until).toLocaleDateString("en-IN")}`;
   } else {
     const used = profile && profile.usage_month === monthIST() ? profile.extract_count : 0;
@@ -360,8 +360,8 @@ function upgrade() {
   const feats = CONFIG.PRO_FEATURES || [];
   $("#planFeatures").innerHTML = feats.map((f) => `<li>${esc(f)}</li>`).join("");
   $("#plans").innerHTML = plansView().map((p) => `
-    <button class="plan ${p.best ? "best" : ""}" data-plan="${esc(p.id)}">
-      ${p.best ? '<span class="tag">Best value</span>' : ""}
+    <button class="plan ${p.best && p.enabled ? "best" : ""} ${p.enabled ? "" : "soon"}" ${p.enabled ? `data-plan="${esc(p.id)}"` : "disabled"}>
+      ${!p.enabled ? '<span class="tag soon-tag">Coming soon</span>' : p.best ? '<span class="tag">Most popular</span>' : ""}
       <span><span class="pn">${esc(p.name)}</span>${p.label ? ` <span class="offer">${esc(p.label)}</span>` : ""}<br><span class="pnote">${esc(p.note || "")}</span></span>
       <span class="pp">${p.priceHtml} <small>${esc(p.per || "")}</small></span>
     </button>`).join("");
@@ -1335,7 +1335,7 @@ function deptName() {
 function usageInfo() {
   if (!profile) return null;
   const pro = isPro();
-  const limit = pro ? (CONFIG.PRO_MONTHLY_LIMIT ?? 300) : CONFIG.FREE_MONTHLY_LIMIT;
+  const limit = pro ? proLimit() : CONFIG.FREE_MONTHLY_LIMIT;
   const used = profile.usage_month === monthIST() ? profile.extract_count : 0;
   return { pro, limit, used: Math.min(used, limit), left: Math.max(limit - used, 0) };
 }
@@ -1344,7 +1344,7 @@ function meterHtml() {
   if (!u) return "";
   const pct = u.limit ? Math.round((u.used / u.limit) * 100) : 0;
   const cls = pct >= 100 ? "full" : pct >= 80 ? "warn" : "";
-  const plans = plansView().map((p) => `<button class="btn ${p.best ? "primary" : ""}" data-plan="${esc(p.id)}">${esc(p.name)} · ${p.priceHtml}</button>`).join("");
+  const plans = plansView().filter((p) => p.enabled).map((p) => `<button class="btn ${p.best ? "primary" : ""}" data-plan="${esc(p.id)}">${esc(p.name)} · ${p.priceHtml}</button>`).join("");
   const daysLeft = u.pro && profile?.pro_until ? Math.ceil((new Date(profile.pro_until) - Date.now()) / 86400e3) : null;
   const renew = daysLeft !== null && daysLeft <= 7;
   return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients this month<span>${u.pro ? "Pro" : "Free"}</span></div>
@@ -1448,7 +1448,7 @@ function busyStages(stages) {
 const LENGTH_NAMES = { concise: "Concise", standard: "Standard", detailed: "Detailed" };
 function patientsLeft() {
   if (!profile) return null;
-  const lim = isPro() ? (CONFIG.PRO_MONTHLY_LIMIT ?? 300) : CONFIG.FREE_MONTHLY_LIMIT;
+  const lim = isPro() ? proLimit() : CONFIG.FREE_MONTHLY_LIMIT;
   const used = profile.usage_month === monthIST() ? profile.extract_count : 0;
   return Math.max(lim - used, 0);
 }
@@ -1519,11 +1519,11 @@ function renderLanding() {
       <h3>Free</h3><div class="price">₹0</div><p class="pnote">To try it out</p>
       <ul><li>${free} patients a month</li><li>Built-in General Medicine format</li><li>All privacy safeguards</li></ul>
       <button class="btn big" data-signin>Start free</button></div>`;
-  const pro = plans.map((p) => `<div class="price-card ${p.best ? "best" : ""}">
-      ${p.best ? '<span class="tag">Best value</span>' : ""}
-      <h3>Pro ${esc(p.name.toLowerCase())}${p.label ? ` <span class="offer">${esc(p.label)}</span>` : ""}</h3><div class="price">${p.priceHtml} <small>${esc(p.per || "")}</small></div><p class="pnote">${esc(p.note || "")}</p>
-      <ul>${(CONFIG.PRO_FEATURES || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
-      <button class="btn big ${p.best ? "primary" : ""}" data-signin>Get started</button></div>`).join("");
+  const pro = plans.map((p) => `<div class="price-card ${p.best && p.enabled ? "best" : ""} ${p.enabled ? "" : "soon"}">
+      ${!p.enabled ? '<span class="tag soon-tag">Coming soon</span>' : p.best ? '<span class="tag">Most popular</span>' : ""}
+      <h3>${esc(p.name)}${p.label ? ` <span class="offer">${esc(p.label)}</span>` : ""}</h3><div class="price">${p.priceHtml} <small>${esc(p.per || "")}</small></div><p class="pnote">${esc(p.note || "")}</p>
+      <ul>${p.limit ? `<li><b>${p.limit} patients a month</b></li>` : ""}${(CONFIG.PRO_FEATURES || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+      ${p.enabled ? `<button class="btn big ${p.best ? "primary" : ""}" data-signin>Get started</button>` : `<button class="btn big" disabled>Coming soon</button>`}</div>`).join("");
   $("#priceGrid").innerHTML = freeCard + pro;
 }
 
@@ -1537,29 +1537,38 @@ function applyLimits(lim) {
   if (lim?.pricing) CONFIG.PRICING = lim.pricing;
 }
 
-/* Plans as shown to doctors: prices come from admin settings (CONFIG.PRICING), with the
-   regular price crossed out while an offer runs. Falls back to config.js if not loaded yet. */
+/* Plans as shown to doctors: prices and limits come from admin settings (CONFIG.PRICING), with the
+   regular price crossed out while an offer runs. A plan switched off in admin shows as "Coming soon".
+   Falls back to config.js if prices haven't loaded yet. */
 const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
+const PLAN_IDS = ["pro100", "monthly", "yearly"];
+/** Monthly patient limit for the signed-in Pro user's plan. */
+function proLimit() {
+  const lim = Number(CONFIG.PRICING?.[profile?.plan]?.limit);
+  return lim > 0 ? lim : (CONFIG.PRO_MONTHLY_LIMIT ?? 300);
+}
 function plansView() {
   const P = CONFIG.PRICING;
-  const meta = { monthly: { name: "Monthly", per: "/ month" }, yearly: { name: "Yearly", per: "/ year" } };
-  if (!P) return (CONFIG.PLANS || []).map((p) => ({ ...p, priceHtml: esc(p.price), label: "" }));
+  if (!P) return (CONFIG.PLANS || []).map((p) => ({ ...p, priceHtml: esc(p.price), label: "", enabled: true }));
   const today = new Date().toISOString().slice(0, 10);
   const offerOn = !P.offer_ends || today <= P.offer_ends;
-  const cur = (k) => { const x = P[k] || {}; return offerOn && Number(x.price) > 0 ? Number(x.price) : Number(x.list || x.price || 0); };
   const out = [];
-  for (const id of ["monthly", "yearly"]) {
+  for (const id of PLAN_IDS) {
     const x = P[id];
-    if (!x || !cur(id)) continue;
-    const price = cur(id), list = Number(x.list) || 0, struck = offerOn && list > price;
-    let note = id === "monthly" ? "One-time payment · 30 days of Pro" : `≈ ${inr(price / 12)} / month`;
-    if (id === "yearly" && cur("monthly")) {
-      const save = Math.round((1 - price / (cur("monthly") * 12)) * 100);
-      if (save >= 10) note += ` · save ${save}%`;
-    }
-    out.push({ id, ...meta[id], best: id === "yearly", price: inr(price), list: struck ? inr(list) : "",
+    if (!x) continue;
+    const price = offerOn && Number(x.price) > 0 ? Number(x.price) : Number(x.list || x.price || 0);
+    if (!price) continue;
+    const list = Number(x.list) || 0, struck = offerOn && list > price;
+    const limit = Number(x.limit) || 300, yearly = id === "yearly";
+    out.push({
+      id, limit, enabled: x.enabled !== false, best: id === "monthly",
+      name: yearly ? "Pro yearly" : `Pro ${limit}`,
+      per: yearly ? "/ year" : "/ month",
+      price: inr(price), list: struck ? inr(list) : "",
       priceHtml: `${struck ? `<s class="was">${inr(list)}</s> ` : ""}${inr(price)}`,
-      label: struck && P.offer_label ? P.offer_label : "", note });
+      label: x.enabled === false ? "" : struck && P.offer_label ? P.offer_label : "",
+      note: yearly ? `${limit} patients a month · ≈ ${inr(price / 12)} / month` : `${limit} patients a month · 30 days, one-time payment`,
+    });
   }
   return out;
 }

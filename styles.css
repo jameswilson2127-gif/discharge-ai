@@ -470,3 +470,8 @@ mark { background: var(--warn-bg); padding: 0 2px; }
 /* prices: regular price struck through during an offer */
 s.was { color: #8a9693; font-weight: 400; font-size: .8em; margin-right: 2px; }
 .offer { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: #9a4a00; background: #fff1e0; border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
+
+/* plan switched off in admin: greyed out, "Coming soon" */
+.plan.soon, .price-card.soon { opacity: .55; filter: grayscale(1); cursor: not-allowed; }
+.plan.soon { pointer-events: none; }
+.tag.soon-tag { background: #6b7b78; }

@@ -58,11 +58,13 @@ const INT_SETTINGS: Record<string, [number, number]> = {
 export function cleanPricing(p: any): Record<string, unknown> | null | string {
   if (!p || typeof p !== "object") return null;
   const out: Record<string, unknown> = {};
-  for (const [k, days] of [["monthly", 30], ["yearly", 365]] as const) {
+  for (const [k, days] of [["pro100", 30], ["monthly", 30], ["yearly", 365]] as const) {
     const list = Math.round(Number(p[k]?.list) || 0), price = Math.round(Number(p[k]?.price) || 0);
+    const limit = Math.round(Number(p[k]?.limit) || 0);
     if (list < 1 || list > 100000) return `${k}: regular price must be ₹1–₹1,00,000`;
     if (price < 0 || price > list) return `${k}: offer price must be empty or not more than the regular price`;
-    out[k] = { list, price, days };
+    if (limit < 1 || limit > 100000) return `${k}: patients / month must be 1–100000`;
+    out[k] = { list, price, days, limit, enabled: p[k]?.enabled !== false };
   }
   const label = String(p.offer_label ?? "").trim().slice(0, 30);
   const ends = p.offer_ends ? String(p.offer_ends) : null;
