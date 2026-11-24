@@ -210,7 +210,7 @@ const SCHEMA = {
   required: ["title", "sections"],
 };
 
-Deno.serve(async (req: Request) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
@@ -272,4 +272,20 @@ Deno.serve(async (req: Request) => {
     console.error(e);
     return json({ error: "Could not read the template. Try pasting it as text." }, 502);
   }
+}
+
+// Allow the site's own domains (and anything listed in the ALLOWED_ORIGIN secret, comma-separated).
+const SITE_ORIGINS = ["https://dischargeai.in", "https://www.dischargeai.in"];
+function allowOrigin(origin: string | null) {
+  const cfg = env("ALLOWED_ORIGIN", "*").split(",").map((s) => s.trim()).filter(Boolean);
+  if (cfg.includes("*")) return "*";
+  const ok = [...SITE_ORIGINS, ...cfg];
+  return origin && ok.includes(origin) ? origin : SITE_ORIGINS[0];
+}
+
+Deno.serve(async (req: Request) => {
+  const res = await handle(req);
+  res.headers.set("Access-Control-Allow-Origin", allowOrigin(req.headers.get("origin")));
+  res.headers.set("Vary", "Origin");
+  return res;
 });

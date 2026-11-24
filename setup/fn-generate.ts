@@ -269,7 +269,7 @@ ABSOLUTE RULES
 9. Write units with values. Preserve the meaning of "suspected", "?" and negated history exactly.
 10. final_diagnosis: primary diagnosis first, then complications, then comorbidities/habits, using the doctor's own diagnosis wording, expanded only with qualifiers present in the case data (suspected cause, stage, relapse, "status post" procedures and transplants with years, current therapy) — e.g. "Acute gastroenteritis (suspected infective vs drug-induced) in a case of relapsed Multiple Myeloma (ISS stage I), s/p autologous HSCT (2024), on Bortezomib". Follow the template's diagnosis guidance if it says otherwise.`;
 
-Deno.serve(async (req: Request) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
@@ -362,4 +362,20 @@ Deno.serve(async (req: Request) => {
     }
     return json({ error: "Could not write the summary. Please try again." }, 502);
   }
+}
+
+// Allow the site's own domains (and anything listed in the ALLOWED_ORIGIN secret, comma-separated).
+const SITE_ORIGINS = ["https://dischargeai.in", "https://www.dischargeai.in"];
+function allowOrigin(origin: string | null) {
+  const cfg = env("ALLOWED_ORIGIN", "*").split(",").map((s) => s.trim()).filter(Boolean);
+  if (cfg.includes("*")) return "*";
+  const ok = [...SITE_ORIGINS, ...cfg];
+  return origin && ok.includes(origin) ? origin : SITE_ORIGINS[0];
+}
+
+Deno.serve(async (req: Request) => {
+  const res = await handle(req);
+  res.headers.set("Access-Control-Allow-Origin", allowOrigin(req.headers.get("origin")));
+  res.headers.set("Vary", "Origin");
+  return res;
 });
