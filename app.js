@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=33";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=33";
-import { buildChronology } from "./chrono.js?v=33";
-import { labPanel, consistencyIssues } from "./checks.js?v=33";
+import { CONFIG } from "./config.js?v=34";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=34";
+import { buildChronology } from "./chrono.js?v=34";
+import { labPanel, consistencyIssues } from "./checks.js?v=34";
 
 /* ============================================================
    Setup & helpers
@@ -474,7 +474,8 @@ function renderTemplatePicker() {
   const sel = $("#p_template");
   const mine = state.templates.map((t) => `<option value="${t.id}">${esc(t.name)}${t.is_default ? " ★" : ""}</option>`).join("");
   sel.innerHTML = (mine ? `<optgroup label="My templates">${mine}</optgroup>` : "") +
-    `<optgroup label="Built-in (by department)">${BUILTIN_TEMPLATES.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("")}</optgroup>` +
+    [["Medical departments", (t) => t.group !== "surgical"], ["Surgical departments", (t) => t.group === "surgical"]].map(([label, f]) =>
+      `<optgroup label="${label}">${BUILTIN_TEMPLATES.filter(f).map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("")}</optgroup>`).join("") +
     `<option value="__manage">＋ New / manage templates…</option>`;
   const id = state.patient.templateId;
   sel.value = isBuiltin(id) || state.templates.some((t) => t.id === id) ? (id || "default") : "default";
@@ -495,8 +496,10 @@ function renderTemplateList() {
       <button class="btn small" data-edit="${t.id}">Edit</button></div>`);
   }
   if (items.length) items.unshift(`<h3 class="sub">My templates</h3>`);
-  items.push(`<h3 class="sub">Built-in, by department</h3>`);
+  let lastGroup = null;
   for (const t of BUILTIN_TEMPLATES) {
+    const g = t.group === "surgical" ? "Built-in: surgical departments" : "Built-in: medical departments";
+    if (g !== lastGroup) { items.push(`<h3 class="sub">${g}</h3>`); lastGroup = g; }
     items.push(`<div class="tpl-item"><span class="nm">${esc(t.name)}<span class="meta">Built-in · ${esc(t.department)}</span></span>
       <button class="btn small" data-use="${t.id}">${state.patient.templateId === t.id ? "In use ✓" : "Use"}</button>
       <button class="btn small" data-copy="${t.id}">Copy &amp; edit</button></div>`);
@@ -964,7 +967,7 @@ function openLightbox(p, title) {
 }
 
 /* ---------- Extract ---------- */
-const ARR_KEYS = ["allergies", "past_events", "held_drugs", "pending_investigations", "known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
+const ARR_KEYS = ["allergies", "operations", "past_events", "held_drugs", "pending_investigations", "known_case_of", "chief_complaints", "diagnoses", "investigations", "imaging_and_other_tests", "events", "daily_progress", "medications", "unclear_items"];
 function normalise(d) {
   d = d && typeof d === "object" ? d : {};
   for (const k of ARR_KEYS) if (!Array.isArray(d[k])) d[k] = [];
@@ -1101,6 +1104,10 @@ const SECTIONS = [
   ] },
   { title: "Imaging & other tests", table: "imaging_and_other_tests", cols: [
     { k: "date", label: "Date", w: 90 }, { k: "test", label: "Test", w: 150 }, { k: "finding", label: "Finding", area: true },
+  ] },
+  { title: "Operations & deliveries", table: "operations", note: "One row per operation, delivery or bedside procedure in this admission. The operative / delivery section of the summary is written from this.", cols: [
+    { k: "date", label: "Date", w: 90 }, { k: "procedure", label: "Operation / procedure", w: 170 }, { k: "anaesthesia", label: "Anaesthesia", w: 100 },
+    { k: "details", label: "Findings, implants, drains, specimen, baby details", area: true },
   ] },
   { title: "Significant events & procedures", table: "events", cols: [
     { k: "date", label: "Date / time", w: 120 }, { k: "description", label: "Event", area: true },

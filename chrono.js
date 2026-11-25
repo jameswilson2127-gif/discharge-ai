@@ -45,7 +45,7 @@ export function parseDate(s, ref) {
 const fmt = (d) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 const fmtA = (d, approx) => approx === "year" ? String(d.getFullYear()) : approx === "month" ? `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}` : fmt(d);
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const ORDER = { past: 0, admission: 1, progress: 2, event: 3, labs: 4, imaging: 5 };
+const ORDER = { past: 0, admission: 1, operation: 2, progress: 3, event: 4, labs: 5, imaging: 6 };
 
 /** Returns { admission, entries:[{when,label,phase,text}], undatedPast:[…], trends:[…], text } */
 export function buildChronology(d) {
@@ -78,6 +78,8 @@ export function buildChronology(d) {
     `Admitted${(d.chief_complaints || []).length ? ` with ${d.chief_complaints.join(", ")}` : ""}`);
   for (const r of progress) add(parseDate(r.date, adm), "progress", r.note);
   for (const r of events) add(parseDate(r.date, adm), "event", r.description);
+  for (const r of d.operations || []) add(parseDate(r.date, adm), "operation",
+    [r.procedure, r.anaesthesia && `under ${r.anaesthesia} anaesthesia`.replace(/anaesthesia anaesthesia/i, "anaesthesia"), r.details].filter(Boolean).join(" — "));
   for (const r of img) add(parseDate(r.date, adm), "imaging", [r.test, r.finding].filter(Boolean).join(": "));
 
   // Labs: one line per date.
@@ -99,7 +101,7 @@ export function buildChronology(d) {
     if (adm && it.date < adm) { phase = "before"; label = `Before admission — ${fmtA(it.date, it.approx)}`; }
     else if (adm) { phase = "stay"; label = `Day ${Math.floor((it.date - adm) / DAY) + 1} — ${fmt(it.date)}`; }
     else { phase = "stay"; label = fmtA(it.date, it.approx); }
-    const tag = { past: "Past history", admission: "Admission", progress: "Progress", event: "Event", labs: "Investigations", imaging: "Imaging / tests" }[it.kind];
+    const tag = { past: "Past history", admission: "Admission", operation: "Operation / procedure", progress: "Progress", event: "Event", labs: "Investigations", imaging: "Imaging / tests" }[it.kind];
     return { when: it.date.getTime(), label, phase, kind: it.kind, text: `${tag}: ${it.text}` };
   });
 
