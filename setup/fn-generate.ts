@@ -319,7 +319,18 @@ async function handle(req: Request): Promise<Response> {
   const o = payload.options ?? {};
   // Detailed: give the writer a size to aim for, proportional to what was read (Flash-Lite writes short otherwise).
   let target = "";
-  if (length === "detailed") {
+  const cdat = c as Record<string, unknown>;
+  const allNotes = Array.isArray(cdat.daily_progress) ? (cdat.daily_progress as any[]) : [];
+  // Detailed stays with 6+ dated notes: the day-by-day course is written in parts (by date range) at the
+  // same time and dropped into the summary, because one Flash-Lite call stops at ~900 words.
+  const COURSE_MARK = "[[HOSPITAL_COURSE]]";
+  const split = length === "detailed" && allNotes.length >= 6;
+  const chunks: any[][] = [];
+  if (split) {
+    const per = Math.max(4, Math.ceil(allNotes.length / 4)); // at most 4 parts
+    for (let i = 0; i < allNotes.length; i += per) chunks.push(allNotes.slice(i, i + per));
+    target = `HOSPITAL COURSE IS WRITTEN SEPARATELY: in the section that holds the day-by-day course in hospital, write the opening (admission findings, initial investigations and diagnosis, as the template asks), then put exactly ${COURSE_MARK} on its own line where the day-by-day account would go, then write the end-of-stay paragraph per OUTCOME. Do NOT write the day-by-day course yourself and use ${COURSE_MARK} only once.`;
+  } else if (length === "detailed") {
     const cc = c as Record<string, unknown>;
     const notes = Array.isArray(cc.daily_progress) ? cc.daily_progress.length : 0;
     const words = String(cc.case_story ?? "").split(/\s+/).filter(Boolean).length;
@@ -351,18 +362,52 @@ async function handle(req: Request): Promise<Response> {
   if (!q?.allowed) return json({ error: "Monthly drafting limit reached.", quota: q }, 402);
 
   try {
-    const { data, usage, model } = await callGemini({
+    const thinking = {
+      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "0")),
+      thinkingLevel: length === "detailed" ? env("GENERATE_THINKING_LEVEL_DETAILED", "low") : env("GENERATE_THINKING_LEVEL", "minimal"),
+    };
+    const main = callGemini({
       system: SYSTEM,
       parts: [{ text: `${ctx}\n\nVERIFIED CASE DATA (JSON):\n${caseText}` }],
       schema: { type: "OBJECT", properties, required },
       maxTokens: Number(env("GENERATE_MAX_TOKENS", length === "detailed" ? "32000" : "16000")),
-      // Writing from already-checked data needs little reasoning: thinking off by default (cost).
-      thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "0")),
-      thinkingLevel: length === "detailed" ? env("GENERATE_THINKING_LEVEL_DETAILED", "low") : env("GENERATE_THINKING_LEVEL", "minimal"),
+      ...thinking,
     });
+    // One call per date range, each writing only its own days, with the whole case for context and trends.
+    const courseCalls = chunks.map((days, i) => {
+      const first = days[0]?.date || `note ${i + 1}`, last = days[days.length - 1]?.date || "";
+      const words = days.reduce((n, d) => n + String(d?.note ?? "").split(/\s+/).filter(Boolean).length, 0);
+      return callGemini({
+        system: SYSTEM,
+        parts: [{ text: `TASK: write ONLY part ${i + 1} of ${chunks.length} of the day-by-day HOSPITAL COURSE, covering these ${days.length} dated notes (${first}${last && last !== first ? ` to ${last}` : ""}). The admission story, the earlier and later days, and the end-of-stay paragraph are written separately, so do not write them. ${i === 0 ? "Begin with the first of these days (e.g. \"On day 1 of admission…\" or \"On [date]…\")." : "Continue the story naturally from the previous days (e.g. \"On [date]…\", \"Subsequently…\")."} One paragraph per day (join days only when nothing changed), with everything documented for each day: status, vitals, examination, results with values and trends against earlier values, every drug started, stopped or changed with dose and why, procedures, consults, complications. Aim for about ${Math.max(days.length * 90, Math.round(words * 0.9))}–${Math.max(days.length * 160, Math.round(words * 1.4))} words; shorter only where a note is genuinely brief. Formal past-tense prose, no headings, paragraphs separated by a blank line. Use only the case data.\n\nYOUR DAYS (daily_progress):\n${JSON.stringify(scrub(days))}\n\nFULL VERIFIED CASE DATA (JSON, for context and trends):\n${caseText}` }],
+        schema: { type: "OBJECT", properties: { course: S }, required: ["course"] },
+        maxTokens: 16000, ...thinking,
+      });
+    });
+    const [res, ...courseRes] = await Promise.all([main, ...courseCalls]);
+    const { data, model } = res;
+    const usage = [res, ...courseRes].reduce((u: any, r: any) => {
+      for (const k of ["promptTokenCount", "candidatesTokenCount", "thoughtsTokenCount"]) u[k] = (u[k] ?? 0) + Number(r.usage?.[k] ?? 0);
+      return u;
+    }, {});
     await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, length, ok: true, model, ...costOf(usage, model) });
     const sections: Record<string, string> = {};
     for (const k of Object.keys(properties)) if (k !== "final_diagnosis") sections[k] = scrub(String(data?.[k] ?? "")) as string;
+    if (split) {
+      const course = courseRes.map((r: any) => String(r.data?.course ?? "").trim()).filter(Boolean).join("\n\n");
+      const key = Object.keys(sections).find((k) => sections[k].includes(COURSE_MARK));
+      if (key) sections[key] = sections[key].replace(COURSE_MARK, scrub(course) as string).replaceAll(COURSE_MARK, "");
+      else {
+        // The writer forgot the marker: put the course into the section that describes the stay.
+        const idx = tpl.sections.findIndex((x, i) => properties[`s${i}`] && /course|clinical summary|case summary|summary/i.test(x.heading));
+        if (idx >= 0) {
+          const paras = sections[`s${idx}`].split(/\n\s*\n/);
+          const end = paras.length > 1 ? paras.pop() : "";
+          sections[`s${idx}`] = [...paras, scrub(course) as string, end].filter(Boolean).join("\n\n");
+        }
+      }
+      for (const k of Object.keys(sections)) sections[k] = sections[k].replaceAll(COURSE_MARK, "");
+    }
     return json({
       data: { final_diagnosis: Array.isArray(data?.final_diagnosis) ? data.final_diagnosis.map((x: unknown) => scrub(String(x)) as string) : [], sections },
       quota: q,

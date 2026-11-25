@@ -325,6 +325,57 @@ const SCHEMA = {
   required: ["case_story", "diagnoses", "medications", "investigations", "daily_progress", "unclear_items"],
 };
 
+// ---------- Merging the two halves of a long file ----------
+function sumUsage(us: any[]) {
+  const out: Record<string, number> = { promptTokenCount: 0, candidatesTokenCount: 0, thoughtsTokenCount: 0 };
+  for (const u of us) for (const k of Object.keys(out)) out[k] += Number(u?.[k] ?? 0);
+  return out;
+}
+const blank = (v: unknown) => v == null || (typeof v === "string" && !v.trim()) || (Array.isArray(v) && !v.length);
+const normDate = (d: unknown) => String(d ?? "").replace(/\s+/g, "").toLowerCase();
+export function mergeReads(parts: any[]) {
+  const [a, ...rest] = parts.map((p) => (p && typeof p === "object" ? p : {}));
+  const out: any = { ...a };
+  for (const b of rest) {
+    for (const [k, v] of Object.entries(b)) {
+      if (blank(v)) continue;
+      const cur = out[k];
+      if (blank(cur)) { out[k] = v; continue; }
+      if (k === "case_story" || k === "history_of_present_illness" || k === "past_history_and_medications" || k === "relevant_negative_history" || k === "follow_up_plan") {
+        if (String(v) !== String(cur)) out[k] = `${cur}\n\n${v}`;
+      } else if (k === "discharge_date") {
+        out[k] = v; // the later pages carry the discharge
+      } else if (k === "condition_at_last_note") {
+        out[k] = { ...cur, ...Object.fromEntries(Object.entries(v as object).filter(([, x]) => !blank(x))) };
+      } else if (k === "admission_examination") {
+        out[k] = { ...Object.fromEntries(Object.entries(v as object).filter(([, x]) => !blank(x))), ...Object.fromEntries(Object.entries(cur).filter(([, x]) => !blank(x))) };
+      } else if (k === "daily_progress" && Array.isArray(cur) && Array.isArray(v)) {
+        const rows = cur.map((r: any) => ({ ...r }));
+        for (const r of v as any[]) {
+          const same = r?.date && rows.find((x: any) => x.date && normDate(x.date) === normDate(r.date));
+          if (same) { if (!String(same.note ?? "").includes(String(r.note ?? ""))) same.note = `${same.note ?? ""} ${r.note ?? ""}`.trim(); }
+          else rows.push(r);
+        }
+        out[k] = rows;
+      } else if (k === "medications" && Array.isArray(cur) && Array.isArray(v)) {
+        const rows = cur.map((r: any) => ({ ...r }));
+        const key = (m: any) => ["drug", "dose", "route", "frequency"].map((f) => String(m?.[f] ?? "").toLowerCase().replace(/\s+/g, "")).join("|");
+        for (const m of v as any[]) {
+          const same = rows.find((x: any) => key(x) === key(m));
+          if (same) { same.on_discharge = !!(same.on_discharge || m.on_discharge); if (m.dates && !String(same.dates ?? "").includes(m.dates)) same.dates = [same.dates, m.dates].filter(Boolean).join("; "); }
+          else rows.push(m);
+        }
+        out[k] = rows;
+      } else if (Array.isArray(cur) && Array.isArray(v)) {
+        const seen = new Set(cur.map((x: unknown) => JSON.stringify(x)));
+        out[k] = [...cur, ...(v as unknown[]).filter((x) => !seen.has(JSON.stringify(x)))];
+      }
+      // other single values (age, sex, admission_date, department): keep the first part's value
+    }
+  }
+  return out;
+}
+
 // ---------- Handler ----------
 async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -401,29 +452,43 @@ async function handle(req: Request): Promise<Response> {
     }, 402);
   }
 
-  const parts: unknown[] = [{ text: `There are ${images.length} photos from ONE patient's file, in order.` }];
-  images.forEach((im, i) => {
-    parts.push({ text: `Photo ${i + 1} — ${LABELS[im.kind] ?? LABELS.other}:` });
-    parts.push({ inlineData: { mimeType: im.mime, data: im.data } });
+  // Build the request for a run of pages. Long files (16+ pages) are read in two halves at the same
+  // time and merged: Flash-Lite writes about the same amount per call whatever the page count, so two
+  // calls give roughly twice the detail for a 30-page file.
+  const buildParts = (from: number, to: number, part = 0, of = 1) => {
+    const n = to - from;
+    const parts: unknown[] = [{ text: of > 1
+      ? `These are pages ${from + 1}–${to} of a ${images.length}-page file from ONE patient, in order (part ${part} of ${of}; the other pages are read separately and merged afterwards). Transcribe only what is on THESE pages, in full. Fill age, sex, dates and department only if they appear on these pages.`
+      : `There are ${images.length} photos from ONE patient's file, in order.` }];
+    images.slice(from, to).forEach((im, i) => {
+      parts.push({ text: `Photo ${from + i + 1} — ${LABELS[im.kind] ?? LABELS.other}:` });
+      parts.push({ inlineData: { mimeType: im.mime, data: im.data } });
+    });
+    if (length === "detailed") {
+      parts.push({ text: `DETAIL TARGET: ${n} pages here. Transcribe everything that is written. case_story should be roughly ${n * 80}–${n * 120} words if the pages carry that much (never pad, never summarise away detail). daily_progress: one row for every dated note, each with everything written that day (often 80–200 words per day). Every investigation value goes in its own row.` });
+    }
+    parts.push({ text: "Transcribe and organise these into the JSON schema, following every rule." });
+    return parts;
+  };
+  const read = (parts: unknown[]) => callGemini({
+    system: SYSTEM + DETAIL_RULES[length], parts, schema: SCHEMA,
+    maxTokens: Number(env("EXTRACT_MAX_TOKENS", length === "detailed" ? "60000" : "32000")),
+    // Detailed reads think harder (more tokens, more careful reading of every page).
+    thinkingBudget: Number(env(`EXTRACT_THINKING_BUDGET_${length.toUpperCase()}`, length === "detailed" ? "8192" : "1024")),
+    thinkingLevel: env(`EXTRACT_THINKING_${length.toUpperCase()}`, length === "detailed" ? "high" : "low"),
   });
-  if (length === "detailed") {
-    // Detailed: the transcription must grow with the file. Flash-Lite otherwise writes the same ~3-4k tokens
-    // for 30 pages as for 10.
-    const n = images.length;
-    parts.push({ text: `DETAIL TARGET: this file has ${n} pages. Transcribe everything that is written. case_story should be roughly ${n * 80}–${n * 120} words if the pages carry that much (never pad, never summarise away detail). daily_progress: one row for every dated note, each with everything written that day (often 80–200 words per day). Every investigation value goes in its own row.` });
-  }
-  parts.push({ text: "Transcribe and organise these into the JSON schema, following every rule." });
 
   try {
-    const { data, usage, model } = await callGemini({
-      system: SYSTEM + DETAIL_RULES[length], parts, schema: SCHEMA,
-      maxTokens: Number(env("EXTRACT_MAX_TOKENS", length === "detailed" ? "60000" : "32000")),
-      // Low thinking for every length keeps a 15-page Detailed discharge around ₹2 on Flash-Lite;
-      // the ward-shorthand rules above do most of the work "high" used to.
-      // Detailed reads think harder (more tokens, more careful reading of every page).
-      thinkingBudget: Number(env(`EXTRACT_THINKING_BUDGET_${length.toUpperCase()}`, length === "detailed" ? "8192" : "1024")),
-      thinkingLevel: env(`EXTRACT_THINKING_${length.toUpperCase()}`, length === "detailed" ? "high" : "low"),
-    });
+    let data: any, usage: any, model: string;
+    if (images.length > LONG_FILE) {
+      const half = Math.ceil(images.length / 2);
+      const res = await Promise.all([read(buildParts(0, half, 1, 2)), read(buildParts(half, images.length, 2, 2))]);
+      data = mergeReads(res.map((r) => r.data));
+      usage = sumUsage(res.map((r) => r.usage));
+      model = res[0].model;
+    } else {
+      ({ data, usage, model } = await read(buildParts(0, images.length)));
+    }
     await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: true, model, photo_sig: photoSig, charged: !freeReread, ...costOf(usage, model) });
     return json({ data: scrub(data), quota: freeReread ? null : q, free_reread: freeReread });
   } catch (e) {
