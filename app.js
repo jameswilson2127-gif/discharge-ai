@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=31";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=31";
-import { buildChronology } from "./chrono.js?v=31";
-import { labPanel, consistencyIssues } from "./checks.js?v=31";
+import { CONFIG } from "./config.js?v=32";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=32";
+import { buildChronology } from "./chrono.js?v=32";
+import { labPanel, consistencyIssues } from "./checks.js?v=32";
 
 /* ============================================================
    Setup & helpers
@@ -109,6 +109,20 @@ function restoreCase() {
    ============================================================ */
 function monthIST() { return new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 7); }
 function isPro() { return !!(profile?.pro_until && new Date(profile.pro_until) > new Date()); }
+// Allowance period. Pro: 30-day windows from the payment (pack_start). Free: calendar month (IST).
+// Must match public.usage_key() in setup/11-pack-period.sql.
+const PACK_MS = 30 * 86400e3;
+function packWindow() {
+  if (!isPro()) return null;
+  const until = Date.parse(profile.pro_until), now = Date.now();
+  let a = profile.pack_start ? Math.floor(Date.parse(profile.pack_start) / 1000) * 1000
+    : until - PACK_MS * Math.ceil((until - now) / PACK_MS);
+  if (a > now) a = now;
+  const idx = Math.floor((now - a) / PACK_MS);
+  return { key: `P${Math.floor(a / 1000)}#${idx}`, end: Math.min(a + (idx + 1) * PACK_MS, until), until };
+}
+function usageKey() { return packWindow()?.key ?? monthIST(); }
+function usedNow() { return profile && profile.usage_month === usageKey() ? profile.extract_count : 0; }
 
 let limitsLoaded = false;
 async function loadProfile() {
@@ -143,7 +157,7 @@ function renderAccount() {
     const kind = profile.plan === "yearly" ? "Pro yearly" : `Pro ${proLimit()}`;
     plan = `${kind} · till ${new Date(profile.pro_until).toLocaleDateString("en-IN")}`;
   } else {
-    const used = profile && profile.usage_month === monthIST() ? profile.extract_count : 0;
+    const used = usedNow();
     plan = `Free · ${Math.max(CONFIG.FREE_MONTHLY_LIMIT - used, 0)}/${CONFIG.FREE_MONTHLY_LIMIT} left`;
   }
   el.innerHTML = `
@@ -990,10 +1004,10 @@ async function extract() {
     const ago = state.readAt ? minsAgo(state.readAt) : "";
     const choice = await askChoice(changed
       ? { title: "Pages changed: read again?",
-          text: `You added, removed or rotated pages since they were read${ago ? ` (${ago})` : ""}. Reading again uses ${cost} from your monthly allowance and replaces the data you reviewed.`,
+          text: `You added, removed or rotated pages since they were read${ago ? ` (${ago})` : ""}. Reading again uses ${cost} from your allowance and replaces the data you reviewed.`,
           primary: "Read again", secondary: "← Go to Review" }
       : { title: "These pages are already read",
-          text: `They were read${ago ? ` ${ago}` : " already"}. Reading the same pages again uses ${cost} from your monthly allowance and replaces the data you reviewed. Corrections can be made on the Review screen instead.`,
+          text: `They were read${ago ? ` ${ago}` : " already"}. Reading the same pages again uses ${cost} from your allowance and replaces the data you reviewed. Corrections can be made on the Review screen instead.`,
           primary: "← Go to Review", secondary: "Read again anyway", danger: true });
     const readAgain = changed ? choice === "primary" : choice === "secondary";
     if (!readAgain) { if (choice) showStep("review"); return; }
@@ -1007,7 +1021,7 @@ async function extract() {
   const length = state.patient.length || "standard";
   if (length === "detailed") {
     const left = patientsLeft();
-    if (!confirm(`Detailed uses 2 patients from your monthly allowance${left !== null ? ` (${left} left)` : ""}. Continue?`)) return;
+    if (!confirm(`Detailed uses 2 patients from your allowance${left !== null ? ` (${left} left)` : ""}. Continue?`)) return;
   }
   const n = state.photos.length;
   busyStages([[`Uploading ${n} page${n > 1 ? "s" : ""}`, 3 + n * 0.4], ["Reading handwriting and reports", 8 + n * 1.6],
@@ -1415,7 +1429,7 @@ function usageInfo() {
   if (!profile) return null;
   const pro = isPro();
   const limit = pro ? proLimit() : CONFIG.FREE_MONTHLY_LIMIT;
-  const used = profile.usage_month === monthIST() ? profile.extract_count : 0;
+  const used = usedNow();
   return { pro, limit, used: Math.min(used, limit), left: Math.max(limit - used, 0) };
 }
 function meterHtml() {
@@ -1426,9 +1440,12 @@ function meterHtml() {
   const plans = plansView().filter((p) => p.enabled).map((p) => `<button class="btn ${p.best ? "primary" : ""}" data-plan="${esc(p.id)}">${esc(p.name)} · ${p.priceHtml}</button>`).join("");
   const daysLeft = u.pro && profile?.pro_until ? Math.ceil((new Date(profile.pro_until) - Date.now()) / 86400e3) : null;
   const renew = daysLeft !== null && daysLeft <= 7;
-  return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients this month<span>${u.pro ? "Pro" : "Free"}</span></div>
+  const w = packWindow();
+  const day = (t) => new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const when = !w ? "resets on the 1st" : w.end >= w.until ? `valid till ${day(w.until)}` : `renews on ${day(w.end)}`;
+  return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients ${u.pro ? "in this pack" : "this month"}<span>${u.pro ? "Pro" : "Free"}</span></div>
     <div class="meter ${cls}"><i style="width:${Math.min(pct, 100)}%"></i></div>
-    <p class="meter-note">${u.left} left · Detailed counts as 2 · resets on the 1st</p>
+    <p class="meter-note">${u.left} left · Detailed counts as 2 · ${when}</p>
     ${u.pro && !renew ? "" : `<div class="meter-up"><span>${renew ? `Pro ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}. Renew (days are added on top)` : "Upgrade with UPI, cards or net banking"}</span><div class="plan-btns">${plans}</div></div>`}`;
 }
 function renderHome() {
@@ -1528,7 +1545,7 @@ const LENGTH_NAMES = { concise: "Concise", standard: "Standard", detailed: "Deta
 function patientsLeft() {
   if (!profile) return null;
   const lim = isPro() ? proLimit() : CONFIG.FREE_MONTHLY_LIMIT;
-  const used = profile.usage_month === monthIST() ? profile.extract_count : 0;
+  const used = usedNow();
   return Math.max(lim - used, 0);
 }
 function renderLength() {

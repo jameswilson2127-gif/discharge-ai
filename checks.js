@@ -4,7 +4,7 @@
 //    lab sheet's H/L or standard adult reference ranges, and which groups are missing.
 //  • consistencyIssues(): mismatches between the discharge drug list and the case file
 //    (drug on hold, documented allergy / "avoid", stopped during stay, dose change, added by hand).
-import { parseDate } from "./chrono.js?v=31";
+import { parseDate } from "./chrono.js?v=32";
 
 /* ---------------- Lab panel ---------------- */
 

@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=31";
-import { esc } from "./doc.js?v=31";
+import { CONFIG } from "./config.js?v=32";
+import { esc } from "./doc.js?v=32";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);
@@ -97,13 +97,12 @@ function planPill(u) {
 }
 
 function userCard(u) {
-  const month = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 7);
-  const thisMonth = u.usage_month === month ? u.extract_count : 0;
+  const thisMonth = u.period_used ?? 0; // current pack (Pro) or calendar month (Free), worked out by the server
   const pro = u.pro_until && new Date(u.pro_until) > new Date();
   return `<div class="u ${u.blocked ? "blocked" : ""}" data-id="${u.id}">
     <div class="top"><span class="em">${esc(u.email || "(no email)")}</span>${planPill(u)}</div>
     <div class="stats">
-      <span>This month <b>${int(thisMonth)}</b> patients</span>
+      <span>${pro ? "This pack" : "This month"} <b>${int(thisMonth)}</b> patients</span>
       <span>All time <b>${int(u.discharges_total)}</b> discharges</span>
       <span>AI cost <b>${rupees(u.cost_usd_total)}</b></span>
       <span>Paid <b>${paise(u.paid_paise_total)}</b></span>

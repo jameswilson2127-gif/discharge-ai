@@ -131,7 +131,7 @@ async function handle(req: Request): Promise<Response> {
         const days = Number(b.days);
         if (!Number.isFinite(days) || days < 0 || days > 3660) return json({ error: "Days must be 0–3660" }, 400);
         const pro_until = days === 0 ? null : new Date(Date.now() + days * 86400e3).toISOString();
-        return json({ ok: true, row: await patch("profiles", `id=eq.${b.user_id}`, { pro_until, ...(days === 0 ? {} : { plan: "manual" }) }) });
+        return json({ ok: true, row: await patch("profiles", `id=eq.${b.user_id}`, { pro_until, ...(days === 0 ? {} : { plan: "manual", pack_start: new Date(Math.floor(Date.now() / 1000) * 1000).toISOString() }) }) });
       }
 
       case "reset_usage":
