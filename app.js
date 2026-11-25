@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=36";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=36";
-import { buildChronology } from "./chrono.js?v=36";
-import { labPanel, consistencyIssues } from "./checks.js?v=36";
+import { CONFIG } from "./config.js?v=37";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=37";
+import { buildChronology } from "./chrono.js?v=37";
+import { labPanel, consistencyIssues } from "./checks.js?v=37";
 
 /* ============================================================
    Setup & helpers
@@ -76,7 +76,19 @@ const state = {
   templates: [],       // user's saved templates (rows from Supabase)
 };
 
+// "My Activity" shows patient names from THIS phone only: case id -> name, never uploaded.
+const NAMES_KEY = "dai_case_names";
+function rememberName() {
+  const n = (state.patient.name || "").trim();
+  if (!LS || !state.caseId || !n) return;
+  const m = store.get(LS, NAMES_KEY, {});
+  if (m[state.caseId]?.n === n) return;
+  m[state.caseId] = { n: n.slice(0, 60), t: Date.now() };
+  const keep = Object.entries(m).filter(([, v]) => Date.now() - v.t < 400 * 86400e3).sort((a, b) => b[1].t - a[1].t).slice(0, 500);
+  store.set(LS, NAMES_KEY, Object.fromEntries(keep));
+}
 const saveCase = debounce(() => {
+  rememberName();
   if (!SS) return;
   store.set(SS, CASE_KEY, {
     savedAt: Date.now(),
@@ -168,6 +180,7 @@ function renderAccount() {
       <div class="menu" id="menu" hidden>
         <div class="menu-head">${esc(email)}<small>${esc(plan)}</small></div>
         ${isAdmin() ? `<a href="admin.html">Admin panel</a>` : ""}
+        <button data-menu="activity">My Activity</button>
         <button data-menu="export">Download my data</button>
         <a href="terms.html">Terms of Use</a>
         <a href="privacy.html">Privacy Policy</a>
@@ -180,6 +193,7 @@ function renderAccount() {
 }
 
 async function signOut() {
+  if (LS) store.del(LS, NAMES_KEY); // on-device patient names for My Activity
   await sb.auth.signOut();
   try { SS?.clear(); } catch { /* ignore */ }
   location.reload();
@@ -236,6 +250,7 @@ function onAccountClick(e) {
   const m = $("#menu"); if (m) m.hidden = true;
   if (act === "upgrade") upgrade();
   if (act === "export") exportMyData();
+  if (act === "activity") showActivity();
   if (act === "signout") signOut();
   if (act === "delete") deleteAccount();
 }
@@ -1508,8 +1523,12 @@ function showChargeInfo() {
     </tbody></table>
     <ul><li>Rewriting a summary (changing length, template or instructions) is free.</li>
       <li>Reading the same pages again within an hour is free.</li>${renew ? `<li>${esc(renew)}</li>` : ""}</ul>
-    <div class="ask-actions"><button class="btn primary" data-a="ok">Got it</button></div></div>`;
-  box.addEventListener("click", (e) => { if (e.target.closest("[data-a]") || e.target === box) box.remove(); });
+    <div class="ask-actions"><button class="btn primary" data-a="ok">Got it</button>${profile && !document.querySelector(".ask.activity") ? `<button class="btn" data-a="act">See my activity</button>` : ""}</div></div>`;
+  box.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-a]");
+    if (a || e.target === box) box.remove();
+    if (a?.dataset.a === "act") showActivity();
+  });
   document.body.appendChild(box);
   box.querySelector("[data-a=ok]").focus();
 }
@@ -1517,6 +1536,66 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-info=charges]");
   if (b) { e.preventDefault(); e.stopPropagation(); showChargeInfo(); }
 }, true);
+
+/* ---------- My Activity: discharges and payments ---------- */
+async function showActivity(tab = "cases") {
+  const box = document.createElement("div");
+  box.className = "ask-wrap no-print";
+  box.innerHTML = `<div class="ask activity" role="dialog" aria-modal="true"><div class="act-head"><b>My Activity</b><button class="btn small" data-a="close" aria-label="Close">✕</button></div>
+    <div class="act-tabs"><button data-tab="cases">Discharges</button><button data-tab="payments">Payments</button></div>
+    <div class="act-body"><p class="muted">Loading…</p></div></div>`;
+  document.body.appendChild(box);
+  const close = () => box.remove();
+  let data = null;
+  const draw = () => {
+    for (const b of box.querySelectorAll("[data-tab]")) b.classList.toggle("on", b.dataset.tab === tab);
+    box.querySelector(".act-body").innerHTML = tab === "cases" ? activityCases(data) : activityPayments(data);
+  };
+  box.addEventListener("click", (e) => {
+    if (e.target === box || e.target.closest("[data-a=close]")) return close();
+    const t = e.target.closest("[data-tab]"); if (t) { tab = t.dataset.tab; if (data) draw(); }
+    if (e.target.closest("[data-info=charges]")) return;
+  });
+  try {
+    const { data: d, error } = await sb.rpc("my_activity", { p_days: 90 });
+    if (error) throw error;
+    data = d || { cases: [], payments: [] };
+    draw();
+  } catch {
+    box.querySelector(".act-body").innerHTML = `<p class="muted">Couldn't load your activity. Check the connection and try again.</p>`;
+  }
+}
+function activityCases(d) {
+  const u = usageInfo(), w = packWindow();
+  const day = (t) => new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const top = u ? `<p class="act-sum">${u.pro ? "This pack" : "This month"}: <b>${u.used} of ${u.limit}</b> used · ${!w ? "resets on the 1st" : w.end >= w.until ? `valid till ${day(w.until)}` : `renews ${day(w.end)}`} <button class="info-btn" data-info="charges" aria-label="How patients are counted">i</button></p>` : "";
+  if (!d.cases.length) return `${top}<p class="muted">No discharges in the last 90 days.</p>`;
+  const names = (LS && store.get(LS, NAMES_KEY, {})) || {};
+  const when = (t) => new Date(t).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const rows = d.cases.map((c) => {
+    const name = names[c.case_id]?.n;
+    const notes = [
+      c.paid_reads > 1 ? `read ${c.paid_reads} times` : "",
+      c.free_reads ? `${c.free_reads} free re-read${c.free_reads > 1 ? "s" : ""}` : "",
+      c.failed_reads ? `${c.failed_reads} failed read${c.failed_reads > 1 ? "s" : ""}, not counted` : "",
+      c.writes > 1 ? `rewritten ${c.writes - 1}× (free)` : "",
+    ].filter(Boolean).join(" · ");
+    const used = Number(c.used) || 0;
+    return `<li><div class="act-row"><span class="act-name">${name ? esc(name) : "Patient"}</span><span class="act-used ${used ? "" : "zero"}">${used ? `${used} patient${used > 1 ? "s" : ""}` : "Not counted"}</span></div>
+      <small>${esc(when(c.at))} · ${c.photos ? `${c.photos} page${c.photos > 1 ? "s" : ""}` : "—"} · ${esc(LENGTH_NAMES[c.length] || "—")}${notes ? ` · ${esc(notes)}` : ""}</small></li>`;
+  }).join("");
+  return `${top}<ul class="act-list">${rows}</ul><p class="act-foot">Last 90 days. Patient names are shown only on the phone where you typed them; they are never stored on our server.</p>`;
+}
+function activityPayments(d) {
+  if (!d.payments.length) return `<p class="muted">No payments yet.</p>`;
+  const names = { pro100: "Pro 100", monthly: "Pro 300", yearly: "Pro yearly", manual: "Pro" };
+  const rows = d.payments.map((p) => {
+    const days = p.days || (p.plan === "yearly" ? 365 : 30);
+    return `<li><div class="act-row"><span class="act-name">${esc(names[p.plan] || "Pro")}</span><span class="act-used">₹${(Number(p.amount_paise) / 100).toLocaleString("en-IN")}</span></div>
+      <small>${esc(new Date(p.at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))} · ${days} days · one-time payment</small></li>`;
+  }).join("");
+  return `<ul class="act-list">${rows}</ul>`;
+}
 
 function renderHome() {
   const has = state.photos.length || state.data || state.draft;
