@@ -317,10 +317,20 @@ async function handle(req: Request): Promise<Response> {
   if (!required.length) return json({ error: "This template has no sections for the AI to write." }, 400);
 
   const o = payload.options ?? {};
+  // Detailed: give the writer a size to aim for, proportional to what was read (Flash-Lite writes short otherwise).
+  let target = "";
+  if (length === "detailed") {
+    const cc = c as Record<string, unknown>;
+    const notes = Array.isArray(cc.daily_progress) ? cc.daily_progress.length : 0;
+    const words = String(cc.case_story ?? "").split(/\s+/).filter(Boolean).length;
+    const lo = Math.max(notes * 80, Math.round(words * 0.7), 300), hi = Math.max(notes * 150, Math.round(words * 1.1), 500);
+    target = `COURSE TARGET (Detailed): the case data has ${notes} dated progress notes and a ${words}-word case story. Write the hospital course at about ${lo}–${hi} words, using everything documented for each day; go shorter only where a note is genuinely brief. Never add anything that is not in the case data.`;
+  }
   const ctx = [
     `DOCUMENT TITLE: ${tpl.title}`,
     `OUTCOME: ${OUTCOMES[o.outcome] ?? OUTCOMES.discharged}`,
     `SUMMARY LENGTH: ${LENGTHS[length]}`,
+    target,
     `DEPARTMENT: ${String(o.dept || (c as Record<string, unknown>).department || (payload.template as Record<string, unknown> | undefined)?.department || "___").slice(0, 120)}`,
     o.followup ? `FOLLOW-UP INTERVAL: ${String(o.followup).slice(0, 60)}` : "FOLLOW-UP INTERVAL: not specified (use ___)",
     o.monitor ? `PARAMETERS TO MONITOR: ${String(o.monitor).slice(0, 200)}` : "",
@@ -345,10 +355,10 @@ async function handle(req: Request): Promise<Response> {
       system: SYSTEM,
       parts: [{ text: `${ctx}\n\nVERIFIED CASE DATA (JSON):\n${caseText}` }],
       schema: { type: "OBJECT", properties, required },
-      maxTokens: Number(env("GENERATE_MAX_TOKENS", "16000")),
+      maxTokens: Number(env("GENERATE_MAX_TOKENS", length === "detailed" ? "32000" : "16000")),
       // Writing from already-checked data needs little reasoning: thinking off by default (cost).
       thinkingBudget: Number(env("GENERATE_THINKING_BUDGET", "0")),
-      thinkingLevel: env("GENERATE_THINKING_LEVEL", "minimal"),
+      thinkingLevel: length === "detailed" ? env("GENERATE_THINKING_LEVEL_DETAILED", "low") : env("GENERATE_THINKING_LEVEL", "minimal"),
     });
     await logUsage({ user_id: user.id, kind: "generate", case_id: caseId, length, ok: true, model, ...costOf(usage, model) });
     const sections: Record<string, string> = {};

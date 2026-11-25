@@ -406,16 +406,23 @@ async function handle(req: Request): Promise<Response> {
     parts.push({ text: `Photo ${i + 1} — ${LABELS[im.kind] ?? LABELS.other}:` });
     parts.push({ inlineData: { mimeType: im.mime, data: im.data } });
   });
+  if (length === "detailed") {
+    // Detailed: the transcription must grow with the file. Flash-Lite otherwise writes the same ~3-4k tokens
+    // for 30 pages as for 10.
+    const n = images.length;
+    parts.push({ text: `DETAIL TARGET: this file has ${n} pages. Transcribe everything that is written. case_story should be roughly ${n * 80}–${n * 120} words if the pages carry that much (never pad, never summarise away detail). daily_progress: one row for every dated note, each with everything written that day (often 80–200 words per day). Every investigation value goes in its own row.` });
+  }
   parts.push({ text: "Transcribe and organise these into the JSON schema, following every rule." });
 
   try {
     const { data, usage, model } = await callGemini({
       system: SYSTEM + DETAIL_RULES[length], parts, schema: SCHEMA,
-      maxTokens: Number(env("EXTRACT_MAX_TOKENS", "32000")),
+      maxTokens: Number(env("EXTRACT_MAX_TOKENS", length === "detailed" ? "60000" : "32000")),
       // Low thinking for every length keeps a 15-page Detailed discharge around ₹2 on Flash-Lite;
       // the ward-shorthand rules above do most of the work "high" used to.
-      thinkingBudget: Number(env(`EXTRACT_THINKING_BUDGET_${length.toUpperCase()}`, "1024")),
-      thinkingLevel: env(`EXTRACT_THINKING_${length.toUpperCase()}`, "low"),
+      // Detailed reads think harder (more tokens, more careful reading of every page).
+      thinkingBudget: Number(env(`EXTRACT_THINKING_BUDGET_${length.toUpperCase()}`, length === "detailed" ? "8192" : "1024")),
+      thinkingLevel: env(`EXTRACT_THINKING_${length.toUpperCase()}`, length === "detailed" ? "high" : "low"),
     });
     await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: true, model, photo_sig: photoSig, charged: !freeReread, ...costOf(usage, model) });
     return json({ data: scrub(data), quota: freeReread ? null : q, free_reread: freeReread });
