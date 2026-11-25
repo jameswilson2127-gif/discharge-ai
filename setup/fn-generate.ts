@@ -213,7 +213,7 @@ function cleanTemplate(t: any): { title: string; sections: Section[] } | null {
 const LENGTHS: Record<string, string> = {
   concise: "CONCISE — a brief summary. The hospital course groups the stay into phases and keeps only the key findings, results and treatment changes; other narrative sections 1–3 sentences each.",
   standard: "STANDARD — the hospital course is as long as the documented content requires: go through every dated note in order with its findings, results and treatment changes. Little documented = short course; a lot documented = long course. Other narrative sections at the template's usual length.",
-  detailed: "DETAILED — the fullest account the documented content allows: every dated note and event, with vitals, serial values, examination changes and each treatment change and its reason. Length scales with the amount documented.",
+  detailed: "DETAILED — the fullest account the documented content allows: every dated note and event, with vitals, serial values, examination changes and each treatment change and its reason. Write the hospital course as one paragraph per day (two or three days together only when nothing changed between them), each naming that day's status, vitals, results with values and their trend against earlier values, every drug started, stopped or changed with dose, procedures, consults and complications. Length scales with the amount documented; a long stay gives a long course.",
 };
 
 const SYSTEM = `You write discharge summaries for an Indian teaching hospital, following the department's own template exactly.

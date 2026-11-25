@@ -16,7 +16,7 @@ export const CONFIG = {
     { id: "pro100",  name: "Pro 100", price: "₹199", per: "/ month", note: "100 patients a month · 30 days, one-time payment" },
     { id: "monthly", name: "Pro 300", price: "₹599", per: "/ month", note: "300 patients a month · 30 days, one-time payment", best: true },
   ],
-  PRO_FEATURES: ["Detailed summaries (count as 2 patients)", "All department formats", "Unlimited custom templates", "Priority support"],
+  PRO_FEATURES: ["Detailed summaries (count as 2 patients)", "Long files up to 30 pages (16+ pages count as 3)", "All department formats", "Unlimited custom templates", "Priority support"],
 
   // ---- Legal (shown in the Terms of Use and Privacy Policy) ----
   // Your full legal name, or your company's name if you register one.

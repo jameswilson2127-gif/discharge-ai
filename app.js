@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=34";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=34";
-import { buildChronology } from "./chrono.js?v=34";
-import { labPanel, consistencyIssues } from "./checks.js?v=34";
+import { CONFIG } from "./config.js?v=35";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=35";
+import { buildChronology } from "./chrono.js?v=35";
+import { labPanel, consistencyIssues } from "./checks.js?v=35";
 
 /* ============================================================
    Setup & helpers
@@ -289,7 +289,7 @@ async function signIn() {
    API
    ============================================================ */
 // The server gives up after ~150 s, so never leave the doctor watching a spinner longer than that.
-const API_TIMEOUT = { extract: 140000, template: 140000 };
+const API_TIMEOUT = { extract: 200000, template: 140000 };
 const NET_MSG = "The upload didn't reach our server - the mobile network seems slow or dropped. Please check your connection and tap the button again. A failed read is not counted against your allowance. If it keeps happening, try Wi-Fi.";
 // When Google sheds traffic ("high demand"), wait and try again by itself instead of failing.
 // Every busy attempt is refunded on the server, so the doctor is never charged for it.
@@ -835,11 +835,17 @@ const idRow = (p, attr) => `<div class="row id-row">
   <button class="btn small ${p.clean ? "on" : ""}" data-${attr}="clean" ${p.masked ? "disabled" : ""}>${p.clean ? "No IDs ✓" : "No IDs"}</button>
 </div>`;
 
-const MAX_CASE_PHOTOS = 15;
+const MAX_CASE_PHOTOS = 30;
+const LONG_FILE = 15; // 15+ pages are read as Detailed automatically
+// Patients used by one read: 1–14 pages 1 (Detailed 2); exactly 15 pages 2; 16–30 pages 3. Must match fn-extract.ts.
+function effLength(n = state.photos.length) { return n >= LONG_FILE ? "detailed" : state.patient.length || "standard"; }
+function readUnits(n = state.photos.length) { return n > LONG_FILE ? 3 : effLength(n) === "detailed" ? 2 : 1; }
+const unitsText = (u) => `${u} patient${u > 1 ? "s" : ""}`;
 function renderPhotos() {
+  if ($("#lenNote")) renderLength();
   const box = $("#photoList");
   const n = state.photos.length, full = n >= MAX_CASE_PHOTOS;
-  $("#photoCount").textContent = `${n} / ${MAX_CASE_PHOTOS} photos${full ? " — limit reached" : ""}`;
+  $("#photoCount").textContent = `${n} / ${MAX_CASE_PHOTOS} photos${full ? " — limit reached" : n >= LONG_FILE ? ` · long file: read as Detailed, uses ${unitsText(readUnits(n))}` : ""}`;
   $("#photoCount").classList.toggle("full", full);
   for (const id of ["#camBtn", "#galBtn"]) $(id).classList.toggle("off", full);
   $("#camInput").disabled = full; $("#galInput").disabled = full;
@@ -1002,7 +1008,7 @@ async function extract() {
   if (!state.photos.length) return toast("Add at least one photo first.", true);
   if (state.data) {
     // Re-reading is a full new (paid) AI read. Steer doctors back to Review unless pages really changed.
-    const cost = (state.patient.length || "standard") === "detailed" ? "2 more patients" : "1 more patient";
+    const cost = `${readUnits()} more patient${readUnits() > 1 ? "s" : ""}`;
     const changed = state.readSig && photoSig() !== state.readSig;
     const ago = state.readAt ? minsAgo(state.readAt) : "";
     const choice = await askChoice(changed
@@ -1021,12 +1027,16 @@ async function extract() {
     $(".photo.needs-id")?.scrollIntoView({ behavior: "smooth", block: "center" });
     return toast(`${pending} photo(s) still need "Mask IDs" or "No IDs" before reading.`, true, 6000);
   }
-  const length = state.patient.length || "standard";
-  if (length === "detailed") {
-    const left = patientsLeft();
-    if (!confirm(`Detailed uses 2 patients from your allowance${left !== null ? ` (${left} left)` : ""}. Continue?`)) return;
-  }
   const n = state.photos.length;
+  const length = effLength(n), units = readUnits(n);
+  if (units > 1) {
+    const left = patientsLeft();
+    if (left !== null && left < units && !state.data) {
+      return toast(`This read uses ${unitsText(units)}${n >= LONG_FILE ? ` (${n} pages)` : " (Detailed)"}, but only ${left} left. ${n >= LONG_FILE ? "Remove some pages or upgrade." : "Choose Concise or Standard."}`, true, 7000);
+    }
+    const why = n > LONG_FILE ? `${n} pages: a long file is read as Detailed and` : n === LONG_FILE ? "15 pages: read as Detailed and" : "Detailed";
+    if (!confirm(`${why} uses ${unitsText(units)} from your allowance${left !== null ? ` (${left} left)` : ""}. Continue?`)) return;
+  }
   busyStages([[`Uploading ${n} page${n > 1 ? "s" : ""}`, 3 + n * 0.4], ["Reading handwriting and reports", 8 + n * 1.6],
     ["Putting events in date order", 6 + n * 0.8], ["Checking drugs, doses and dates", 5 + n * 0.5], ["Almost done", 30]],
     "Keep this screen open until it finishes. Switching to another app can stop the read.");
@@ -1035,12 +1045,13 @@ async function extract() {
     const r = await api("extract", {
       case_id: state.caseId || newCaseId(),
       length,
-      images: state.photos.map((p) => ({ mime: "image/jpeg", data: p.url.split(",")[1], kind: p.kind })),
+      images: await uploadImages(),
     });
     if (r.free_reread) toast("Same pages read again within the hour, not counted against your allowance.", false, 5000);
     state.data = normalise(r.data);
     state.draft = null; state.draftTemplate = null; state.docHtml = null;
     state.readLength = length; // how carefully the photos were read
+    if (length === "detailed" && state.patient.length !== "detailed") { state.patient.length = "detailed"; renderLength(); } // long file: write Detailed too
     state.readAt = Date.now(); state.readSig = photoSig();
     const P = state.patient;
     if (/^(male|female)$/i.test(state.data.sex || "")) state.data.sex = state.data.sex[0].toUpperCase() + state.data.sex.slice(1).toLowerCase();
@@ -1058,6 +1069,21 @@ async function extract() {
     lock?.release?.().catch(() => {});
     busy(false);
   }
+}
+
+// Photos to send. Long files (16+ pages) are sent a little smaller so the upload stays about the
+// same size as a 15-page file; handwriting stays readable at this resolution.
+async function uploadImages() {
+  const long = state.photos.length > LONG_FILE;
+  const out = [];
+  for (const p of state.photos) {
+    let url = p.url;
+    if (long) {
+      try { url = await compress(await (await fetch(p.url)).blob(), 1400, 0.7); } catch { /* send as is */ }
+    }
+    out.push({ mime: "image/jpeg", data: url.split(",")[1], kind: p.kind });
+  }
+  return out;
 }
 
 // Keep the phone screen on while a read runs, so the answer isn't lost to a locked screen.
@@ -1461,7 +1487,7 @@ function meterHtml() {
   const when = !w ? "resets on the 1st" : w.end >= w.until ? `valid till ${day(w.until)}` : `renews on ${day(w.end)}`;
   return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients ${u.pro ? "in this pack" : "this month"}<span>${u.pro ? "Pro" : "Free"}</span></div>
     <div class="meter ${cls}"><i style="width:${Math.min(pct, 100)}%"></i></div>
-    <p class="meter-note">${u.left} left · Detailed counts as 2 · ${when}</p>
+    <p class="meter-note">${u.left} left · Detailed or 15 pages = 2 · 16+ pages = 3 · ${when}</p>
     ${u.pro && !renew ? "" : `<div class="meter-up"><span>${renew ? `Pro ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}. Renew (days are added on top)` : "Upgrade with UPI, cards or net banking"}</span><div class="plan-btns">${plans}</div></div>`}`;
 }
 function renderHome() {
@@ -1569,14 +1595,17 @@ function renderLength() {
   const left = patientsLeft();
   // Detailed needs 2 patients; once photos are read, changing length only affects rewrites (no allowance used).
   const blockDetailed = !state.data && left !== null && left < 2;
+  const longFile = state.photos.length >= LONG_FILE && !state.data;
   for (const r of $$('input[name="len"]')) {
     r.checked = r.value === len;
-    r.disabled = r.value === "detailed" && blockDetailed;
+    r.disabled = longFile ? r.value !== "detailed" : r.value === "detailed" && blockDetailed;
+    if (longFile) r.checked = r.value === "detailed";
     r.closest(".len").classList.toggle("off", r.disabled);
   }
   if ($("#finalLen")) $("#finalLen").value = len;
   const base = "All lengths keep the diagnosis, key results, every drug change, complications and discharge drugs.";
-  $("#lenNote").textContent = left === null ? base
+  $("#lenNote").textContent = longFile ? `${state.photos.length} pages: long files are read as Detailed automatically and use ${unitsText(readUnits())}. ${base}`
+    : left === null ? base
     : blockDetailed ? `Only ${left} patient${left === 1 ? "" : "s"} left this month, so Detailed (2 patients) isn't available. ${base}`
     : `${left} patients left this month. ${base}`;
 }

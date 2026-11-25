@@ -13,9 +13,10 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "content-type": "application/json" } });
 
-const MAX_IMAGES = 15;
+const MAX_IMAGES = 30;
+const LONG_FILE = 15; // 15+ pages are always read as Detailed
 const MAX_IMAGE_B64 = 3_000_000; // ~2.2 MB per image after client compression
-const MAX_TOTAL_B64 = 13_000_000;
+const MAX_TOTAL_B64 = 19_000_000; // long files are sent smaller by the app
 const OK_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 const LABELS: Record<string, string> = {
   progress: "Progress sheet / clinical notes",
@@ -196,7 +197,7 @@ async function callGemini(opts: {
 const DETAIL_RULES: Record<string, string> = {
   concise: `\n\nDETAIL LEVEL: CONCISE. case_story: about 150–300 words. Daily progress: 2–3 sentences per day, focused on what changed (new symptoms, abnormal vitals, results, treatment started/stopped/changed, procedures, consults, complications). Keep every number you mention. Specialised results: the key finding and main values only. All other fields as usual — never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
   standard: `\n\nDETAIL LEVEL: STANDARD. case_story: about 250–500 words. Daily progress: 3–5 sentences per day covering status, key vitals, results, treatment changes, procedures, consults and plan. Specialised results: main findings with their values. Never drop a drug change, a held drug, an allergy, a complication or a discharge drug.`,
-  detailed: `\n\nDETAIL LEVEL: DETAILED. case_story: as long as needed to hold every fact (often 400–900 words). Daily progress: 3–8 sentences per day, transcribing everything written with every number. Specialised results in full (every marker, every value).`,
+  detailed: `\n\nDETAIL LEVEL: DETAILED. case_story: as long as needed to hold every fact (often 400–900 words; 800–1500 words for long files of 15+ pages). Daily progress: one row for EVERY dated note, 3–8 sentences each, transcribing everything written with every number; never merge or skip days in a long file. Specialised results in full (every marker, every value).`,
 };
 
 const SYSTEM = `You are a meticulous medical records transcriber in an Indian government teaching hospital (any department, medical or surgical: General Medicine, Oncology, Nephrology, Cardiology, Pulmonary Medicine, Neurology, Gastroenterology, General Surgery, Orthopaedics, Obstetrics and Gynaecology, Urology, Neurosurgery, ENT, Ophthalmology, Surgical Oncology, CTVS and others).
@@ -336,7 +337,7 @@ async function handle(req: Request): Promise<Response> {
   let payload: { images?: { mime: string; data: string; kind: string }[]; case_id?: string; length?: string };
   try { payload = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
   // Summary length chosen on step 1. Detailed reads more carefully and counts as 2 patients.
-  const length = ["concise", "standard", "detailed"].includes(String(payload?.length)) ? String(payload.length) : "standard";
+  let length = ["concise", "standard", "detailed"].includes(String(payload?.length)) ? String(payload.length) : "standard";
   // Random per-patient id that links this discharge's AI calls for cost reporting. Contains no patient data.
   const caseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(payload?.case_id ?? "")) ? String(payload.case_id) : null;
 
@@ -350,6 +351,9 @@ async function handle(req: Request): Promise<Response> {
     total += im.data.length;
   }
   if (total > MAX_TOTAL_B64) return json({ error: "Photos are too large in total. Remove a few." }, 400);
+  // Long files: read as Detailed. Patients used: 1–14 pages 1 (Detailed 2); 15 pages 2; 16–30 pages 3.
+  if (images.length >= LONG_FILE) length = "detailed";
+  const cost = images.length > LONG_FILE ? 3 : length === "detailed" ? 2 : 1;
 
   // Same pages read again within an hour (e.g. the phone lost the first answer when the doctor switched
   // apps) is not charged again. Only a one-way fingerprint of the photos is stored, never the photos.
@@ -371,15 +375,21 @@ async function handle(req: Request): Promise<Response> {
     p_pro_limit: Number(env("PRO_MONTHLY_LIMIT", "300")),
   }))?.[0];
   const refund = () => rpc("refund_quota", { p_user: user.id, p_kind: "extract" }).catch(() => {});
-  const units = freeReread ? 0 : length === "detailed" ? 2 : 1;
+  const units = freeReread ? 0 : cost;
   let q = freeReread ? { allowed: true, blocked: false, free_reread: true } as any : await takeOne();
-  if (q?.allowed && units === 2) {
-    const q2 = await takeOne();
-    if (!q2?.allowed) {
-      await refund();
-      return json({ error: "A Detailed summary uses 2 patients, but only 1 is left this month. Choose Concise or Standard.", code: "detailed_needs_2", quota: q }, 402);
+  for (let taken = 1; q?.allowed && taken < units; taken++) {
+    const qn = await takeOne();
+    if (!qn?.allowed) {
+      for (let i = 0; i < taken; i++) await refund();
+      const left = Math.max(Number(qn?.quota ?? 0) - Number(qn?.used ?? 0) + taken, 0);
+      return json({
+        error: images.length >= LONG_FILE
+          ? `A file of ${images.length} pages uses ${units} patients, but only ${left} left. Remove some pages or upgrade.`
+          : `A Detailed summary uses ${units} patients, but only ${left} left. Choose Concise or Standard.`,
+        code: "detailed_needs_2", quota: qn,
+      }, 402);
     }
-    q = q2;
+    q = qn;
   }
   if (q?.blocked) return json({ error: "This account has been suspended. Please contact support." }, 403);
   if (!q?.allowed) {
