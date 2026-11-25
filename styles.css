@@ -498,3 +498,4 @@ body.cam-open { overflow: hidden; }
 .cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .cam-flash.go { animation: camflash .25s ease-out; }
 @keyframes camflash { from { opacity: .7; } to { opacity: 0; } }
+.busy-note { margin: 10px 0 0; font-size: 13px; font-weight: 600; color: #b45309; }

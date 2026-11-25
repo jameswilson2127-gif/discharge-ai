@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=32";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=32";
-import { buildChronology } from "./chrono.js?v=32";
-import { labPanel, consistencyIssues } from "./checks.js?v=32";
+import { CONFIG } from "./config.js?v=33";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=33";
+import { buildChronology } from "./chrono.js?v=33";
+import { labPanel, consistencyIssues } from "./checks.js?v=33";
 
 /* ============================================================
    Setup & helpers
@@ -1007,7 +1007,7 @@ async function extract() {
           text: `You added, removed or rotated pages since they were read${ago ? ` (${ago})` : ""}. Reading again uses ${cost} from your allowance and replaces the data you reviewed.`,
           primary: "Read again", secondary: "← Go to Review" }
       : { title: "These pages are already read",
-          text: `They were read${ago ? ` ${ago}` : " already"}. Reading the same pages again uses ${cost} from your allowance and replaces the data you reviewed. Corrections can be made on the Review screen instead.`,
+          text: `They were read${ago ? ` ${ago}` : " already"}. Reading the same pages again replaces the data you reviewed (free within an hour of the first read; after that it uses ${cost}). Corrections can be made on the Review screen instead.`,
           primary: "← Go to Review", secondary: "Read again anyway", danger: true });
     const readAgain = changed ? choice === "primary" : choice === "secondary";
     if (!readAgain) { if (choice) showStep("review"); return; }
@@ -1025,13 +1025,16 @@ async function extract() {
   }
   const n = state.photos.length;
   busyStages([[`Uploading ${n} page${n > 1 ? "s" : ""}`, 3 + n * 0.4], ["Reading handwriting and reports", 8 + n * 1.6],
-    ["Putting events in date order", 6 + n * 0.8], ["Checking drugs, doses and dates", 5 + n * 0.5], ["Almost done", 30]]);
+    ["Putting events in date order", 6 + n * 0.8], ["Checking drugs, doses and dates", 5 + n * 0.5], ["Almost done", 30]],
+    "Keep this screen open until it finishes. Switching to another app can stop the read.");
+  const lock = await wakeLock();
   try {
     const r = await api("extract", {
       case_id: state.caseId || newCaseId(),
       length,
       images: state.photos.map((p) => ({ mime: "image/jpeg", data: p.url.split(",")[1], kind: p.kind })),
     });
+    if (r.free_reread) toast("Same pages read again within the hour, not counted against your allowance.", false, 5000);
     state.data = normalise(r.data);
     state.draft = null; state.draftTemplate = null; state.docHtml = null;
     state.readLength = length; // how carefully the photos were read
@@ -1049,8 +1052,14 @@ async function extract() {
   } catch (e) {
     handleApiError(e);
   } finally {
+    lock?.release?.().catch(() => {});
     busy(false);
   }
+}
+
+// Keep the phone screen on while a read runs, so the answer isn't lost to a locked screen.
+async function wakeLock() {
+  try { return await navigator.wakeLock?.request("screen"); } catch { return null; }
 }
 
 /* ============================================================
@@ -1520,7 +1529,7 @@ function renderOptsSummary() {
 }
 
 // Live progress: honest stages based on typical timings (the AI call itself returns all at once).
-function busyStages(stages) {
+function busyStages(stages, note = "") {
   const b = $("#busy");
   clearInterval(busyTimer); clearInterval(stageTimer);
   if (!stages) { b.hidden = true; return; }
@@ -1533,7 +1542,7 @@ function busyStages(stages) {
     const pct = Math.min(95, Math.round((t / total) * 100));
     $("#busyText").innerHTML = `<ol class="stages">${stages.map((s, i) =>
       `<li class="${i < cur ? "done" : i === cur ? "now" : ""}">${i < cur ? "✓" : i === cur ? "•" : "○"} ${esc(s[0])}</li>`).join("")}</ol>
-      <div class="meter"><i style="width:${pct}%"></i></div><small>${Math.round(t)} s</small>`;
+      <div class="meter"><i style="width:${pct}%"></i></div><small>${Math.round(t)} s</small>${note ? `<p class="busy-note">${esc(note)}</p>` : ""}`;
   };
   draw();
   b.hidden = false;

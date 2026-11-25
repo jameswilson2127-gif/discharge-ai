@@ -83,7 +83,7 @@ async function logUsage(row: Record<string, unknown>) {
     const r = await post(row);
     // If a newer column isn't in the database yet (SQL file not run), still log the basics.
     if (r.status === 400) {
-      const { thinking_tokens, length, case_id, photos, ...basic } = row;
+      const { thinking_tokens, length, case_id, photos, photo_sig, charged, ...basic } = row;
       await post(basic);
     }
   } catch (e) { console.error("logUsage", e); }
@@ -345,14 +345,28 @@ async function handle(req: Request): Promise<Response> {
   }
   if (total > MAX_TOTAL_B64) return json({ error: "Photos are too large in total. Remove a few." }, 400);
 
+  // Same pages read again within an hour (e.g. the phone lost the first answer when the doctor switched
+  // apps) is not charged again. Only a one-way fingerprint of the photos is stored, never the photos.
+  const enc = new TextEncoder();
+  const hash = await crypto.subtle.digest("SHA-256", enc.encode(length + "|" + images.map((im) => im.mime + ":" + im.data).join("|")));
+  const photoSig = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  let freeReread = false;
+  try {
+    const since = new Date(Date.now() - Number(env("FREE_REREAD_MINUTES", "60")) * 60e3).toISOString();
+    const r = await fetch(`${env("SUPABASE_URL")}/rest/v1/usage_events?user_id=eq.${user.id}&kind=eq.extract&ok=is.true&photo_sig=eq.${photoSig}&created_at=gt.${encodeURIComponent(since)}&select=charged`, { headers: serviceHeaders() });
+    const rows = r.ok ? await r.json() : [];
+    // Free only if the same pages were charged once in that hour, and at most 3 free repeats (limits abuse).
+    freeReread = Array.isArray(rows) && rows.some((x: any) => x.charged !== false) && rows.filter((x: any) => x.charged === false).length < 3;
+  } catch { /* if the check fails, charge as usual */ }
+
   const takeOne = async () => (await rpc("use_quota", {
     p_user: user.id, p_kind: "extract",
     p_free_limit: Number(env("FREE_MONTHLY_LIMIT", "5")),
     p_pro_limit: Number(env("PRO_MONTHLY_LIMIT", "300")),
   }))?.[0];
   const refund = () => rpc("refund_quota", { p_user: user.id, p_kind: "extract" }).catch(() => {});
-  let q = await takeOne();
-  const units = length === "detailed" ? 2 : 1;
+  const units = freeReread ? 0 : length === "detailed" ? 2 : 1;
+  let q = freeReread ? { allowed: true, blocked: false, free_reread: true } as any : await takeOne();
   if (q?.allowed && units === 2) {
     const q2 = await takeOne();
     if (!q2?.allowed) {
@@ -387,10 +401,10 @@ async function handle(req: Request): Promise<Response> {
       thinkingBudget: Number(env(`EXTRACT_THINKING_BUDGET_${length.toUpperCase()}`, "1024")),
       thinkingLevel: env(`EXTRACT_THINKING_${length.toUpperCase()}`, "low"),
     });
-    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: true, model, ...costOf(usage, model) });
-    return json({ data: scrub(data), quota: q });
+    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: true, model, photo_sig: photoSig, charged: !freeReread, ...costOf(usage, model) });
+    return json({ data: scrub(data), quota: freeReread ? null : q, free_reread: freeReread });
   } catch (e) {
-    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: false, model: (e as any)?.model ?? null, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
+    await logUsage({ user_id: user.id, kind: "extract", case_id: caseId, photos: images.length, length, ok: false, model: (e as any)?.model ?? null, charged: false, ...costOf((e as any)?.usage, (e as any)?.model ?? ""), error: String((e as Error)?.message ?? e).slice(0, 200) });
     for (let i = 0; i < units; i++) await refund();
     console.error(e);
     if (/^Gemini error: (429|5\d\d)/.test(String((e as Error)?.message ?? ""))) {
