@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=35";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=35";
-import { buildChronology } from "./chrono.js?v=35";
-import { labPanel, consistencyIssues } from "./checks.js?v=35";
+import { CONFIG } from "./config.js?v=36";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=36";
+import { buildChronology } from "./chrono.js?v=36";
+import { labPanel, consistencyIssues } from "./checks.js?v=36";
 
 /* ============================================================
    Setup & helpers
@@ -1487,9 +1487,37 @@ function meterHtml() {
   const when = !w ? "resets on the 1st" : w.end >= w.until ? `valid till ${day(w.until)}` : `renews on ${day(w.end)}`;
   return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients ${u.pro ? "in this pack" : "this month"}<span>${u.pro ? "Pro" : "Free"}</span></div>
     <div class="meter ${cls}"><i style="width:${Math.min(pct, 100)}%"></i></div>
-    <p class="meter-note">${u.left} left · Detailed or 15 pages = 2 · 16+ pages = 3 · ${when}</p>
+    <p class="meter-note">${u.left} left · ${when} <button class="info-btn" data-info="charges" aria-label="How patients are counted">i</button></p>
     ${u.pro && !renew ? "" : `<div class="meter-up"><span>${renew ? `Pro ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}. Renew (days are added on top)` : "Upgrade with UPI, cards or net banking"}</span><div class="plan-btns">${plans}</div></div>`}`;
 }
+/* "How patients are counted" card, opened from the ⓘ buttons. */
+function showChargeInfo() {
+  const w = packWindow();
+  const day = (t) => new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const renew = !profile ? "" : !w ? "Your free patients reset on the 1st of every month."
+    : w.end >= w.until ? `Your pack is valid till ${day(w.until)}. Unused patients don't carry over.`
+    : `Your pack renews on ${day(w.end)}. Unused patients don't carry over.`;
+  const box = document.createElement("div");
+  box.className = "ask-wrap no-print";
+  box.innerHTML = `<div class="ask charge-info" role="dialog" aria-modal="true"><b>How patients are counted</b>
+    <table><thead><tr><th>Your file</th><th>Counts as</th></tr></thead><tbody>
+      <tr><td>1–14 pages, Concise or Standard</td><td>1 patient</td></tr>
+      <tr><td>1–14 pages, Detailed</td><td>2 patients</td></tr>
+      <tr><td>15 pages (read as Detailed)</td><td>2 patients</td></tr>
+      <tr><td>16–30 pages (read as Detailed)</td><td>3 patients</td></tr>
+    </tbody></table>
+    <ul><li>Rewriting a summary (changing length, template or instructions) is free.</li>
+      <li>Reading the same pages again within an hour is free.</li>${renew ? `<li>${esc(renew)}</li>` : ""}</ul>
+    <div class="ask-actions"><button class="btn primary" data-a="ok">Got it</button></div></div>`;
+  box.addEventListener("click", (e) => { if (e.target.closest("[data-a]") || e.target === box) box.remove(); });
+  document.body.appendChild(box);
+  box.querySelector("[data-a=ok]").focus();
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-info=charges]");
+  if (b) { e.preventDefault(); e.stopPropagation(); showChargeInfo(); }
+}, true);
+
 function renderHome() {
   const has = state.photos.length || state.data || state.draft;
   $("#continueBtn").hidden = !has;

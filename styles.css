@@ -499,3 +499,9 @@ body.cam-open { overflow: hidden; }
 .cam-flash.go { animation: camflash .25s ease-out; }
 @keyframes camflash { from { opacity: .7; } to { opacity: 0; } }
 .busy-note { margin: 10px 0 0; font-size: 13px; font-weight: 600; color: #b45309; }
+.info-btn { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 6px; padding: 0; border-radius: 50%; border: 1.5px solid var(--accent); background: #fff; color: var(--accent); font: italic 700 13px/1 Georgia, serif; vertical-align: middle; cursor: pointer; }
+.charge-info table { width: 100%; border-collapse: collapse; margin: 12px 0 10px; font-size: 14px; }
+.charge-info th, .charge-info td { text-align: left; padding: 7px 6px; border-bottom: 1px solid #e3e9e7; }
+.charge-info th { font-size: 12.5px; color: #6b7a77; font-weight: 600; }
+.charge-info td:last-child { white-space: nowrap; font-weight: 600; }
+.charge-info ul { margin: 4px 0 16px; padding-left: 18px; color: #4d5c59; font-size: 13.5px; line-height: 1.45; }
