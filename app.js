@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=39";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=39";
-import { buildChronology } from "./chrono.js?v=39";
-import { labPanel, consistencyIssues } from "./checks.js?v=39";
+import { CONFIG } from "./config.js?v=40";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=40";
+import { buildChronology } from "./chrono.js?v=40";
+import { labPanel, consistencyIssues } from "./checks.js?v=40";
 
 /* ============================================================
    Setup & helpers
@@ -27,6 +27,14 @@ const REF_KEY = "dai_ref";
 try {
   const rc = new URLSearchParams(location.search).get("ref");
   if (rc && /^[A-Za-z0-9]{6}$/.test(rc) && LS) store.set(LS, REF_KEY, { c: rc.toUpperCase(), t: Date.now() });
+} catch { /* ignore */ }
+// Where the doctor came from (?src=medbulletin or utm_source=…). First link wins, kept 30 days, saved once at signup.
+const SRC_KEY = "dai_src";
+try {
+  const q = new URLSearchParams(location.search);
+  const src = (q.get("src") || q.get("utm_source") || "").toLowerCase().replace(/[^a-z0-9_.-]/g, "").slice(0, 40);
+  const cur = LS && store.get(LS, SRC_KEY);
+  if (src && LS && (!cur || Date.now() - cur.t > 30 * 86400e3)) store.set(LS, SRC_KEY, { s: src, t: Date.now() });
 } catch { /* ignore */ }
 
 // Client-side first pass at removing identifier-like numbers (the server does this again).
@@ -153,6 +161,7 @@ async function loadProfile() {
   const { data, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
   if (!error) profile = data;
   profileLoaded = true;
+  await saveSource();
   claimReferral();
   renderAccount();
   renderGate();
@@ -200,6 +209,15 @@ function renderAccount() {
     </div>`;
 }
 
+async function saveSource() {
+  const r = LS && store.get(LS, SRC_KEY);
+  if (!r || !profile) return;
+  if (profile.signup_source || Date.now() - r.t > 30 * 86400e3) { store.del(LS, SRC_KEY); return; }
+  try {
+    const { error } = await sb.rpc("set_signup_source", { p_src: r.s });
+    if (!error) { store.del(LS, SRC_KEY); profile.signup_source = r.s; }
+  } catch { /* try again next time */ }
+}
 async function claimReferral() {
   const r = LS && store.get(LS, REF_KEY);
   if (!r || !profile) return;

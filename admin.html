@@ -9,8 +9,8 @@
   <meta name="robots" content="noindex, nofollow" />
   <title>Admin — Discharge AI</title>
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=39" />
-  <link rel="stylesheet" href="admin.css?v=39" />
+  <link rel="stylesheet" href="styles.css?v=40" />
+  <link rel="stylesheet" href="admin.css?v=40" />
 </head>
 <body>
   <header class="topbar">
@@ -75,6 +75,10 @@
         <div class="tbl-wrap"><table class="data" id="userCostTable"></table></div>
         <div class="actions tight"><button class="btn" id="moreUserCosts" hidden>Load more</button></div>
 
+        <h3 class="kicker">Signups by source</h3>
+        <p class="hint">From links like dischargeai.in/?src=medbulletin. Saved once when a new account signs up; older accounts show as "unknown".</p>
+        <div class="tbl-wrap"><table class="data" id="sourceTable"></table></div>
+
         <h3 class="kicker">Doctor feedback</h3>
         <div id="feedback" class="err-list"></div>
 
@@ -125,6 +129,6 @@
   <div id="busy" class="busy" hidden><div class="spinner"></div><p id="busyText">Loading…</p></div>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js?v=39"></script>
+  <script type="module" src="admin.js?v=40"></script>
 </body>
 </html>

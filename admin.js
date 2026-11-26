@@ -1,6 +1,6 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=39";
-import { esc } from "./doc.js?v=39";
+import { CONFIG } from "./config.js?v=40";
+import { esc } from "./doc.js?v=40";
 
 const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 const $ = (s, r = document) => r.querySelector(s);
@@ -176,6 +176,16 @@ async function loadUsage() {
     ? r.recent_errors.map((e) => `<div class="err"><b>${esc(e.kind)}</b> · ${new Date(e.at).toLocaleString("en-IN")} · ${esc(e.email || "")}<br><code>${esc(e.error || "")}</code></div>`).join("")
     : `<p class="hint">No errors. 🎉</p>`;
   loadFeedback();
+  loadSources();
+}
+async function loadSources() {
+  try {
+    const rows = (await api("sources")) || [];
+    const pct = (a, b) => (b ? ` <small style="color:var(--muted)">(${Math.round((a / b) * 100)}%)</small>` : "");
+    $("#sourceTable").innerHTML = `<thead><tr><th>Source</th><th>Signups</th><th>Last 7 days</th><th>Made a discharge</th><th>Paid</th><th>Revenue</th></tr></thead>
+      <tbody>${rows.length ? rows.map((x) => `<tr><td><b>${esc(x.source)}</b></td><td>${int(x.signups)}</td><td>${int(x.last_7d)}</td><td>${int(x.made_discharge)}${pct(x.made_discharge, x.signups)}</td><td>${int(x.paid)}${pct(x.paid, x.signups)}</td><td>₹${(Number(x.revenue_paise) / 100).toLocaleString("en-IN")}</td></tr>`).join("")
+        : `<tr><td colspan="6" style="text-align:center;color:var(--muted)">No signups yet</td></tr>`}</tbody>`;
+  } catch (e) { $("#sourceTable").innerHTML = `<tr><td>Could not load sources: ${esc(e.message)}</td></tr>`; }
 }
 async function loadFeedback() {
   try {
