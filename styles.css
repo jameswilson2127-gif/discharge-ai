@@ -520,3 +520,13 @@ body.cam-open { overflow: hidden; }
 .act-used.zero { color: var(--faint); font-weight: 600; }
 .act-list small { display: block; margin-top: 3px; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
 .act-foot { font-size: 12px; color: var(--faint); margin: 10px 0 2px; }
+.ref-lead { margin: 4px 0 10px; font-size: 14px; color: var(--muted); line-height: 1.45; }
+.ref-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-bottom: 12px; }
+.ref-table td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.ref-table td:last-child { text-align: right; font-weight: 600; color: var(--accent); }
+.ref-progress { background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; }
+.ref-progress .meter { margin: 8px 0 6px; }
+.ref-progress small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 4px; line-height: 1.4; }
+.ref-link { display: flex; gap: 8px; margin-bottom: 10px; }
+.ref-link input { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--line-2); border-radius: 10px; font-size: 13.5px; background: #fff; }
+.wa-share { display: block; text-align: center; text-decoration: none; }

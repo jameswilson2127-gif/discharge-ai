@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=37";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=37";
-import { buildChronology } from "./chrono.js?v=37";
-import { labPanel, consistencyIssues } from "./checks.js?v=37";
+import { CONFIG } from "./config.js?v=38";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=38";
+import { buildChronology } from "./chrono.js?v=38";
+import { labPanel, consistencyIssues } from "./checks.js?v=38";
 
 /* ============================================================
    Setup & helpers
@@ -22,6 +22,12 @@ const store = {
 const SS = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const LS = (() => { try { return window.localStorage; } catch { return null; } })();
 const CASE_KEY = "dai_case_v2";
+// Referral link (?ref=CODE): remembered until the doctor signs in, then claimed once.
+const REF_KEY = "dai_ref";
+try {
+  const rc = new URLSearchParams(location.search).get("ref");
+  if (rc && /^[A-Za-z0-9]{6}$/.test(rc) && LS) store.set(LS, REF_KEY, { c: rc.toUpperCase(), t: Date.now() });
+} catch { /* ignore */ }
 
 // Client-side first pass at removing identifier-like numbers (the server does this again).
 function scrubText(t) {
@@ -147,6 +153,7 @@ async function loadProfile() {
   const { data, error } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
   if (!error) profile = data;
   profileLoaded = true;
+  claimReferral();
   renderAccount();
   renderGate();
   renderLength();
@@ -181,6 +188,7 @@ function renderAccount() {
         <div class="menu-head">${esc(email)}<small>${esc(plan)}</small></div>
         ${isAdmin() ? `<a href="admin.html">Admin panel</a>` : ""}
         <button data-menu="activity">My Activity</button>
+        <button data-menu="refer">Refer a colleague</button>
         <button data-menu="export">Download my data</button>
         <a href="terms.html">Terms of Use</a>
         <a href="privacy.html">Privacy Policy</a>
@@ -190,6 +198,54 @@ function renderAccount() {
         <button data-menu="delete" class="danger">Delete account</button>
       </div>
     </div>`;
+}
+
+async function claimReferral() {
+  const r = LS && store.get(LS, REF_KEY);
+  if (!r || !profile) return;
+  if (profile.referred_by || Date.now() - r.t > 30 * 86400e3 || r.c === profile.ref_code) { store.del(LS, REF_KEY); return; }
+  try {
+    const { error } = await sb.rpc("claim_referral", { p_code: r.c });
+    if (!error) store.del(LS, REF_KEY);
+  } catch { /* try again next time */ }
+}
+const bonusLeft = () => (profile?.bonus_until && new Date(profile.bonus_until) > new Date() ? Number(profile.bonus_left) || 0 : 0);
+
+/* ---------- Refer a colleague ---------- */
+async function showReferral() {
+  const box = document.createElement("div");
+  box.className = "ask-wrap no-print";
+  box.innerHTML = `<div class="ask activity refer" role="dialog" aria-modal="true"><div class="act-head"><b>Refer a colleague</b><button class="btn small" data-a="close" aria-label="Close">✕</button></div>
+    <div class="act-body"><p class="muted">Loading…</p></div></div>`;
+  document.body.appendChild(box);
+  box.addEventListener("click", async (e) => {
+    if (e.target === box || e.target.closest("[data-a=close]")) return box.remove();
+    const c = e.target.closest("[data-a=copy]");
+    if (c) { try { await navigator.clipboard.writeText(c.dataset.link); toast("Link copied."); } catch { toast("Couldn't copy. Press and hold the link to copy it.", true); } }
+  });
+  try {
+    const { data: r, error } = await sb.rpc("my_referrals");
+    if (error || !r) throw error;
+    const link = `https://dischargeai.in/?ref=${r.code}`;
+    const msg = `I've been using Discharge AI for my discharge summaries: click photos of the case file and get a ready draft in your department's format in about a minute. Try it free: ${link}`;
+    const q = Number(r.qualified) || 0, waiting = Math.max((Number(r.joined) || 0) - q, 0);
+    const goal = q < 5 ? 5 : Math.min(q + 1, 10);
+    const pct = Math.min(100, Math.round(q < 5 ? (q / 5) * 100 : (Math.min(q, 10) / 10) * 100));
+    const next = q < 5 ? `${5 - q} more for <b>50 free discharges</b>` : q < 10 ? `Each new referral adds <b>+10 discharges</b> (up to 10 referrals)` : `You've reached the maximum: <b>100 bonus discharges</b> earned. Thank you!`;
+    const until = r.bonus_until ? new Date(r.bonus_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
+    box.querySelector(".act-body").innerHTML = `
+      <p class="ref-lead">Share your link. When a colleague signs up and completes <b>2 discharges</b>, it counts as a referral.</p>
+      <table class="ref-table"><tr><td>5 referrals</td><td>50 free discharges</td></tr><tr><td>Each referral from 6 to 10</td><td>+10 discharges</td></tr><tr><td>10 referrals (maximum)</td><td>100 discharges in total</td></tr></table>
+      <div class="ref-progress"><div class="act-row"><span><b>${q}</b> referral${q === 1 ? "" : "s"} counted</span><span>${q >= 10 ? "10 / 10" : `${q} / ${goal}`}</span></div>
+        <div class="meter"><i style="width:${pct}%"></i></div><small>${next}</small>
+        ${waiting ? `<small>Waiting: ${waiting} colleague${waiting > 1 ? "s have" : " has"} signed up but not yet finished 2 discharges.</small>` : ""}
+        ${r.earned ? `<small>Earned: ${r.earned} bonus discharges · <b>${Number(r.bonus_left) || 0} left</b>${until ? `, valid till ${esc(until)}` : ""}. Bonus discharges are used after your ${isPro() ? "pack" : "monthly"} allowance runs out.</small>` : ""}</div>
+      <div class="ref-link"><input readonly value="${esc(link)}" aria-label="Your referral link" /><button class="btn" data-a="copy" data-link="${esc(link)}">Copy</button></div>
+      <a class="btn primary wa-share" href="https://wa.me/?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Share on WhatsApp</a>
+      <p class="act-foot">Your colleague gets the usual free plan. A referral counts only for a new account, once. See the Terms of Use.</p>`;
+  } catch {
+    box.querySelector(".act-body").innerHTML = `<p class="muted">Couldn't load your referral link. Check the connection and try again.</p>`;
+  }
 }
 
 async function signOut() {
@@ -251,6 +307,7 @@ function onAccountClick(e) {
   if (act === "upgrade") upgrade();
   if (act === "export") exportMyData();
   if (act === "activity") showActivity();
+  if (act === "refer") showReferral();
   if (act === "signout") signOut();
   if (act === "delete") deleteAccount();
 }
@@ -1502,7 +1559,7 @@ function meterHtml() {
   const when = !w ? "resets on the 1st" : w.end >= w.until ? `valid till ${day(w.until)}` : `renews on ${day(w.end)}`;
   return `<div class="meter-top"><b>${u.used} of ${u.limit}</b> patients ${u.pro ? "in this pack" : "this month"}<span>${u.pro ? "Pro" : "Free"}</span></div>
     <div class="meter ${cls}"><i style="width:${Math.min(pct, 100)}%"></i></div>
-    <p class="meter-note">${u.left} left · ${when} <button class="info-btn" data-info="charges" aria-label="How patients are counted">i</button></p>
+    <p class="meter-note">${u.left} left${bonusLeft() ? ` + ${bonusLeft()} bonus` : ""} · ${when} <button class="info-btn" data-info="charges" aria-label="How patients are counted">i</button></p>
     ${u.pro && !renew ? "" : `<div class="meter-up"><span>${renew ? `Pro ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}. Renew (days are added on top)` : "Upgrade with UPI, cards or net banking"}</span><div class="plan-btns">${plans}</div></div>`}`;
 }
 /* "How patients are counted" card, opened from the ⓘ buttons. */
@@ -1695,7 +1752,7 @@ function patientsLeft() {
   if (!profile) return null;
   const lim = isPro() ? proLimit() : CONFIG.FREE_MONTHLY_LIMIT;
   const used = usedNow();
-  return Math.max(lim - used, 0);
+  return Math.max(lim - used, 0) + bonusLeft();
 }
 function renderLength() {
   const len = state.patient.length || "standard";
