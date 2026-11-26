@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=38";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=38";
-import { buildChronology } from "./chrono.js?v=38";
-import { labPanel, consistencyIssues } from "./checks.js?v=38";
+import { CONFIG } from "./config.js?v=39";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=39";
+import { buildChronology } from "./chrono.js?v=39";
+import { labPanel, consistencyIssues } from "./checks.js?v=39";
 
 /* ============================================================
    Setup & helpers
@@ -1967,6 +1967,7 @@ function bind() {
   $("#doc").addEventListener("input", onDocEdit);
   $("#optTreatment").addEventListener("change", () => { updateDocWarn(); onDocEdit(); });
   $("#regenBtn").addEventListener("click", generate);
+  $("#referHome")?.addEventListener("click", showReferral);
   $("#lenPick").addEventListener("change", (e) => { if (e.target.name === "len") setLength(e.target.value); });
   $("#finalLen").addEventListener("change", (e) => {
     setLength(e.target.value);

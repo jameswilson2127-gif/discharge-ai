@@ -530,3 +530,4 @@ body.cam-open { overflow: hidden; }
 .ref-link { display: flex; gap: 8px; margin-bottom: 10px; }
 .ref-link input { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--line-2); border-radius: 10px; font-size: 13.5px; background: #fff; }
 .wa-share { display: block; text-align: center; text-decoration: none; }
+.refer-btn { color: #a16207; border-color: #f2d48a; background: #fffbeb; }
