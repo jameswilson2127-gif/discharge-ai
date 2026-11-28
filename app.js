@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=42";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=42";
-import { buildChronology } from "./chrono.js?v=42";
-import { labPanel, consistencyIssues } from "./checks.js?v=42";
+import { CONFIG } from "./config.js?v=43";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=43";
+import { buildChronology } from "./chrono.js?v=43";
+import { labPanel, consistencyIssues } from "./checks.js?v=43";
 
 /* ============================================================
    Setup & helpers
@@ -1512,6 +1512,7 @@ async function generate() {
 function updateDocWarn() {
   const doc = $("#doc");
   $$(".opt-inv", doc).forEach((el) => (el.hidden = !state.patient.tabulate));
+  $("#invPdfBtn").hidden = !state.patient.tabulate || !$$(".opt-inv table", doc).length;
   const opt = $$(".opt-sec", doc);
   $("#optTreatmentLabel").hidden = !opt.length;
   opt.forEach((el) => (el.hidden = !$("#optTreatment").checked));
@@ -2058,6 +2059,22 @@ function bind() {
       document.title = old;
       if (confirm("Done printing? Clear this patient from this device now?")) { clearCase(); showStep("patient"); }
     }, 800);
+  });
+  // Investigations only, as a separate print / PDF (patient header + the table as edited in the summary).
+  $("#invPdfBtn").addEventListener("click", () => {
+    const doc = $("#doc"), inv = $(".opt-inv", doc);
+    if (!inv) return;
+    const out = $("#invPrint");
+    const pt = $("table.pt", doc), dept = $(".dept", doc);
+    out.innerHTML = `<h1>INVESTIGATIONS</h1>${dept ? dept.outerHTML : ""}${pt ? pt.outerHTML : ""}${inv.innerHTML.replace(/<h2>[^<]*<\/h2>/, "")}`;
+    out.hidden = false;
+    document.body.classList.add("print-inv");
+    const old = document.title;
+    document.title = `Investigations ${state.patient.dod || ""}`.trim();
+    const done = () => { document.body.classList.remove("print-inv"); out.hidden = true; out.innerHTML = ""; document.title = old; window.removeEventListener("afterprint", done); };
+    window.addEventListener("afterprint", done);
+    window.print();
+    setTimeout(() => { if (document.body.classList.contains("print-inv")) done(); }, 1500);
   });
   $("#newBtn").addEventListener("click", newPatient);
 

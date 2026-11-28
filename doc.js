@@ -496,10 +496,10 @@ export function invTableHtml(data, heading = "Investigations") {
     dates.sort((a, b) => dateKey(a) - dateKey(b));
     for (let i = 0; i < dates.length; i += 6) {
       const cols = dates.slice(i, i + 6);
-      h += `<table class="inv inv-grid"><tr><th>Investigation</th>${cols.map((d) => `<th>${d ? hl(d) : "Date not written"}</th>`).join("")}</tr>${
+      h += `<div class="inv-scroll"><table class="inv inv-grid"><tr><th>Investigation</th>${cols.map((d) => `<th>${d ? hl(d) : "Date not written"}</th>`).join("")}</tr>${
         tests.filter((t) => cols.some((d) => cell.has(`${t.k}|${d}`))).map((t) =>
           `<tr><td>${hl(t.name)}${t.unit ? ` <small>(${hl(t.unit)})</small>` : ""}</td>${cols.map((d) => `<td>${cell.get(`${t.k}|${d}`) || "–"}</td>`).join("")}</tr>`).join("")
-      }</table>`;
+      }</table></div>`;
     }
   }
   if (img.length) {
