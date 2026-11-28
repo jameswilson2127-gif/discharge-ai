@@ -544,8 +544,5 @@ body.cam-open { overflow: hidden; }
 .doc .inv-grid td:first-child { min-width: 9em; }
 @media print {
   .doc .opt-inv, .doc .inv-scroll { overflow: visible; }
-  body.print-inv #doc, body.print-inv .final-bar, body.print-inv .after-doc { display: none !important; }
-  body.print-inv #invPrint { display: block !important; }
   .doc .inv-grid { width: 100%; }
 }
-.inv-print { display: none; }

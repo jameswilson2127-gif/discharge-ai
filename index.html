@@ -9,7 +9,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=43" />
+  <link rel="stylesheet" href="styles.css?v=44" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -251,12 +251,11 @@
           <button id="regenBtn" class="btn">↻ Rewrite</button>
           <button id="copyBtn" class="btn" disabled>Copy text</button>
           <button id="printBtn" class="btn primary" disabled>Print / Save PDF</button>
-          <button id="invPdfBtn" class="btn" hidden>Investigations PDF</button>
+          <button id="invPdfBtn" class="btn" hidden>⬇ Investigations PDF</button>
           <button id="newBtn" class="btn danger">New patient</button>
         </div>
       </div>
       <article id="doc" class="doc" contenteditable="true" spellcheck="true"></article>
-      <article id="invPrint" class="doc inv-print" hidden></article>
       <div class="no-print after-doc">
         <div id="fbBox" class="fb-box">
           <b>How was this summary?</b>
@@ -385,6 +384,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=43"></script>
+  <script type="module" src="app.js?v=44"></script>
 </body>
 </html>

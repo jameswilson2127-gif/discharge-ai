@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=43";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=43";
-import { buildChronology } from "./chrono.js?v=43";
-import { labPanel, consistencyIssues } from "./checks.js?v=43";
+import { CONFIG } from "./config.js?v=44";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=44";
+import { buildChronology } from "./chrono.js?v=44";
+import { labPanel, consistencyIssues } from "./checks.js?v=44";
 
 /* ============================================================
    Setup & helpers
@@ -2060,21 +2060,32 @@ function bind() {
       if (confirm("Done printing? Clear this patient from this device now?")) { clearCase(); showStep("patient"); }
     }, 800);
   });
-  // Investigations only, as a separate print / PDF (patient header + the table as edited in the summary).
-  $("#invPdfBtn").addEventListener("click", () => {
+  // Investigations only, downloaded as a separate PDF (patient box + the table as edited in the summary).
+  $("#invPdfBtn").addEventListener("click", async () => {
     const doc = $("#doc"), inv = $(".opt-inv", doc);
     if (!inv) return;
-    const out = $("#invPrint");
-    const pt = $("table.pt", doc), dept = $(".dept", doc);
-    out.innerHTML = `<h1>INVESTIGATIONS</h1>${dept ? dept.outerHTML : ""}${pt ? pt.outerHTML : ""}${inv.innerHTML.replace(/<h2>[^<]*<\/h2>/, "")}`;
-    out.hidden = false;
-    document.body.classList.add("print-inv");
-    const old = document.title;
-    document.title = `Investigations ${state.patient.dod || ""}`.trim();
-    const done = () => { document.body.classList.remove("print-inv"); out.hidden = true; out.innerHTML = ""; document.title = old; window.removeEventListener("afterprint", done); };
-    window.addEventListener("afterprint", done);
-    window.print();
-    setTimeout(() => { if (document.body.classList.contains("print-inv")) done(); }, 1500);
+    const txt = (el) => (el?.innerText || "").replace(/\s+/g, " ").trim();
+    const patient = $$("table.pt td", doc).map((td) => {
+      const t = txt(td), i = t.indexOf(":");
+      return i > 0 ? [t.slice(0, i), t.slice(i + 1).replace(/^[.…_\s]+$/, "")] : [t, ""];
+    });
+    const tables = $$("table", inv).map((tb) => {
+      const rows = $$("tr", tb).map((tr) => $$("th,td", tr).map(txt));
+      return { head: rows[0] || [], rows: rows.slice(1) };
+    });
+    try {
+      const { invPdf } = await import("./invpdf.js?v=44");
+      const blob = invPdf({ title: "INVESTIGATIONS", subtitle: txt($(".dept", doc)), patient, tables });
+      const name = (state.patient.name || "").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `Investigations${name ? `_${name}` : ""}${state.patient.dod ? `_${String(state.patient.dod).replace(/\//g, "-")}` : ""}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      toast("Investigations PDF downloaded.");
+    } catch {
+      toast("Couldn't make the PDF. Please try again.", true);
+    }
   });
   $("#newBtn").addEventListener("click", newPatient);
 
