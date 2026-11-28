@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=44";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=44";
-import { buildChronology } from "./chrono.js?v=44";
-import { labPanel, consistencyIssues } from "./checks.js?v=44";
+import { CONFIG } from "./config.js?v=45";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=45";
+import { buildChronology } from "./chrono.js?v=45";
+import { labPanel, consistencyIssues } from "./checks.js?v=45";
 
 /* ============================================================
    Setup & helpers
@@ -2074,7 +2074,7 @@ function bind() {
       return { head: rows[0] || [], rows: rows.slice(1) };
     });
     try {
-      const { invPdf } = await import("./invpdf.js?v=44");
+      const { invPdf } = await import("./invpdf.js?v=45");
       const blob = invPdf({ title: "INVESTIGATIONS", subtitle: txt($(".dept", doc)), patient, tables });
       const name = (state.patient.name || "").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
       const a = document.createElement("a");
