@@ -467,6 +467,48 @@ const TITLES = { expired: "DEATH SUMMARY", referred: "REFERRAL SUMMARY" };
 const NO_DISCHARGE_MEDS = new Set(["referred", "expired"]);
 
 /** Build the printable HTML document. */
+/* ---------- Tabulated (date-wise) investigations ---------- */
+// Parses DD/MM/YYYY, DD-MM-YY or DD/MM so dates sort in order.
+function dateKey(d) {
+  const m = String(d || "").match(/(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?/);
+  if (!m) return 1e9; // undated values go last
+  let y = Number(m[3] || 0); if (y && y < 100) y += 2000;
+  return y * 10000 + Number(m[2]) * 100 + Number(m[1]);
+}
+export function invTableHtml(data, heading = "Investigations") {
+  const inv = (data.investigations || []).filter((r) => r.test && r.value);
+  const img = (data.imaging_and_other_tests || []).filter((r) => r.test || r.finding);
+  if (!inv.length && !img.length) return "";
+  let h = heading ? `<h2>${esc(heading)}</h2>` : "";
+  if (inv.length) {
+    const dates = [], tests = [], cell = new Map();
+    for (const r of inv) {
+      const d = String(r.date || "").trim();
+      const t = String(r.test).trim(), tk = t.toLowerCase().replace(/\s+/g, " ");
+      if (!dates.includes(d)) dates.push(d);
+      let row = tests.find((x) => x.k === tk);
+      if (!row) { row = { k: tk, name: t, unit: String(r.unit || "").trim() }; tests.push(row); }
+      if (!row.unit && r.unit) row.unit = String(r.unit).trim();
+      const key = `${tk}|${d}`;
+      const v = `${hl(r.value)}${r.flag ? ` <b>${esc(r.flag)}</b>` : ""}`;
+      cell.set(key, cell.has(key) ? `${cell.get(key)} / ${v}` : v);
+    }
+    dates.sort((a, b) => dateKey(a) - dateKey(b));
+    for (let i = 0; i < dates.length; i += 6) {
+      const cols = dates.slice(i, i + 6);
+      h += `<table class="inv inv-grid"><tr><th>Investigation</th>${cols.map((d) => `<th>${d ? hl(d) : "Date not written"}</th>`).join("")}</tr>${
+        tests.filter((t) => cols.some((d) => cell.has(`${t.k}|${d}`))).map((t) =>
+          `<tr><td>${hl(t.name)}${t.unit ? ` <small>(${hl(t.unit)})</small>` : ""}</td>${cols.map((d) => `<td>${cell.get(`${t.k}|${d}`) || "–"}</td>`).join("")}</tr>`).join("")
+      }</table>`;
+    }
+  }
+  if (img.length) {
+    h += `<table class="inv"><tr><th>Date</th><th>Other investigations</th><th>Findings</th></tr>${
+      img.map((r) => `<tr><td>${hl(r.date)}</td><td>${hl(r.test)}</td><td>${hl(r.finding)}</td></tr>`).join("")}</table>`;
+  }
+  return h;
+}
+
 export function buildDoc(P, data, draft, tpl = DEFAULT_TEMPLATE) {
   const outcome = P.outcome || "discharged";
   const meds = (data.medications || []).filter((m) => medLine(m));
@@ -478,7 +520,16 @@ export function buildDoc(P, data, draft, tpl = DEFAULT_TEMPLATE) {
   let h = `<h1>${esc(title)}</h1>${dept ? `<div class="dept">${esc(dept)}</div>` : ""}`;
   const head = (s) => (s.heading ? `<h2>${esc(s.heading)}</h2>` : "");
 
+  // Optional date-wise investigation table (chosen on the Review screen). It is always built and shown or
+  // hidden by the app, so the doctor's edits to the summary are kept when the option is switched.
+  const hasInvSec = tpl.sections.some((s) => s.kind === "investigations_table");
+  const firstListIdx = tpl.sections.findIndex((s) => ["treatment_given", "discharge_medications", "advice", "signature"].includes(s.kind));
+  const invBlock = hasInvSec ? "" : invTableHtml(data);
+  let invDone = !invBlock;
+  const addInv = () => { if (!invDone) { h += `<div class="opt-inv"${P.tabulate ? "" : " hidden"}>${invBlock}</div>`; invDone = true; } };
+
   tpl.sections.forEach((s, i) => {
+    if (i === firstListIdx) addInv();
     switch (s.kind) {
       case "patient_details": {
         const f = s.fields && s.fields.length ? s.fields : DEFAULT_TEMPLATE.sections[0].fields;
@@ -510,6 +561,7 @@ export function buildDoc(P, data, draft, tpl = DEFAULT_TEMPLATE) {
         break;
       }
       case "investigations_table": {
+        if (P.tabulate) { h += invTableHtml(data, s.heading || "Investigations"); break; }
         const inv = (data.investigations || []).filter((r) => r.test || r.value);
         const img = (data.imaging_and_other_tests || []).filter((r) => r.test || r.finding);
         if (!inv.length && !img.length) break;
@@ -542,6 +594,7 @@ export function buildDoc(P, data, draft, tpl = DEFAULT_TEMPLATE) {
       }
     }
   });
+  addInv(); // templates without a medication/advice section: put the table at the end
   return h;
 }
 

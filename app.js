@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=41";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=41";
-import { buildChronology } from "./chrono.js?v=41";
-import { labPanel, consistencyIssues } from "./checks.js?v=41";
+import { CONFIG } from "./config.js?v=42";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=42";
+import { buildChronology } from "./chrono.js?v=42";
+import { labPanel, consistencyIssues } from "./checks.js?v=42";
 
 /* ============================================================
    Setup & helpers
@@ -758,7 +758,7 @@ function showStep(step, { keepEditor = false } = {}) {
     b.disabled = (b.dataset.step === "review" && !state.data) || (b.dataset.step === "final" && !state.draft);
   });
   if (step === "templates" && !keepEditor) renderTemplateList();
-  if (step === "review") renderReview();
+  if (step === "review") { renderReview(); $("#tabInv").checked = !!state.patient.tabulate; }
   if (step === "final") { renderDocIfNeeded(); renderRxChecks(); }
   saveCase();
   window.scrollTo({ top: 0 });
@@ -1511,6 +1511,7 @@ async function generate() {
    ============================================================ */
 function updateDocWarn() {
   const doc = $("#doc");
+  $$(".opt-inv", doc).forEach((el) => (el.hidden = !state.patient.tabulate));
   const opt = $$(".opt-sec", doc);
   $("#optTreatmentLabel").hidden = !opt.length;
   opt.forEach((el) => (el.hidden = !$("#optTreatment").checked));
@@ -2028,6 +2029,13 @@ function bind() {
   $("#groupJoin").addEventListener("click", () => { store.set(LS, "dai_grp2_joined", true); setTimeout(hideGroupInvite, 400); });
   // Ticking "I have checked the medications" means review is nearly done: refresh the background draft.
   $("#medConfirm").addEventListener("change", (e) => { if (e.target.checked) prefetchDraft(); });
+  // Date-wise investigation table: shown/hidden in the summary without rewriting it (keeps the doctor's edits).
+  $("#tabInv").addEventListener("change", (e) => {
+    state.patient.tabulate = e.target.checked;
+    const doc = $("#doc");
+    if (state.docHtml && !$$(".opt-inv", doc).length && doc.innerHTML) state.docHtml = null; // older summary: rebuild once
+    saveCase();
+  });
   $("#attention").addEventListener("click", (e) => {
     const t = e.target.closest("[data-usetpl]");
     if (t) { setTemplate(t.dataset.usetpl); renderAttention(); renderOptsSummary(); toast(`Using the ${builtinById(t.dataset.usetpl).name} format.`); return; }

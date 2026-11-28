@@ -531,3 +531,8 @@ body.cam-open { overflow: hidden; }
 .ref-link input { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--line-2); border-radius: 10px; font-size: 13.5px; background: #fff; }
 .wa-share { display: block; text-align: center; text-decoration: none; }
 .refer-btn { color: #a16207; border-color: #f2d48a; background: #fffbeb; }
+.tab-inv { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 6px; padding: 12px; border: 1px solid var(--line-2); border-radius: 12px; background: #fff; font-size: 14.5px; cursor: pointer; }
+.tab-inv input { margin-top: 3px; width: 18px; height: 18px; flex: none; }
+.tab-inv small { color: var(--muted); }
+.doc .inv-grid td, .doc .inv-grid th { text-align: center; }
+.doc .inv-grid td:first-child, .doc .inv-grid th:first-child { text-align: left; }

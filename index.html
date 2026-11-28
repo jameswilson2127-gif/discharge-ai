@@ -9,7 +9,7 @@
   <title>Discharge AI — discharge summaries from case-file photos</title>
   <meta name="description" content="Photograph progress sheets, investigations and treatment charts. Review what the AI read, then print a draft discharge summary in your department's own format." />
   <meta name="theme-color" content="#ffffff" />
-  <link rel="stylesheet" href="styles.css?v=41" />
+  <link rel="stylesheet" href="styles.css?v=42" />
 </head>
 <body>
   <header class="topbar no-print">
@@ -218,6 +218,7 @@
       <div id="rxReview"></div>
       <h3 class="all-head">Everything read from the photos <small>tap a section to check or edit</small></h3>
       <div id="reviewForm"></div>
+      <label class="tab-inv"><input type="checkbox" id="tabInv" /> <span><b>Add a table of investigations</b> to the summary <small>(date-wise, from the values above)</small></span></label>
       <label class="confirm"><input type="checkbox" id="medConfirm" /> I have checked every drug, dose and frequency against the treatment chart.</label>
       <div class="actions sticky">
         <button class="btn" data-go="photos">← Photos</button>
@@ -382,6 +383,6 @@
 
   <div id="toast" class="toast no-print" hidden></div>
 
-  <script type="module" src="app.js?v=41"></script>
+  <script type="module" src="app.js?v=42"></script>
 </body>
 </html>
