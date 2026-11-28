@@ -1,8 +1,8 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-import { CONFIG } from "./config.js?v=40";
-import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=40";
-import { buildChronology } from "./chrono.js?v=40";
-import { labPanel, consistencyIssues } from "./checks.js?v=40";
+import { CONFIG } from "./config.js?v=41";
+import { DEFAULT_TEMPLATE, BUILTIN_TEMPLATES, isBuiltin, builtinById, suggestBuiltin, KINDS, buildDoc, normaliseTemplate, esc, setFactSource } from "./doc.js?v=41";
+import { buildChronology } from "./chrono.js?v=41";
+import { labPanel, consistencyIssues } from "./checks.js?v=41";
 
 /* ============================================================
    Setup & helpers

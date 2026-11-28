@@ -22,7 +22,7 @@ export const CONFIG = {
   // Your full legal name, or your company's name if you register one.
   OPERATOR_NAME: "",
   // Public support + grievance contact. DPDP requires a working contact for grievances.
-  CONTACT_EMAIL: "jameswilson2127@gmail.com",
+  CONTACT_EMAIL: "dischargeai26@gmail.com",
   // WhatsApp support number with country code, digits only, e.g. "919876543210". Empty = button hidden.
   WHATSAPP_NUMBER: "",
   // Doctors' WhatsApp group (feedback & updates). Leave "" to hide the invite.
